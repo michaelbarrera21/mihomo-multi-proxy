@@ -1,0 +1,68 @@
+#!/bin/bash
+set -e
+
+echo "=== Proxy Manager 部署脚本 ==="
+
+if [ "$1" == "upgrade" ]; then
+    echo "=== 升级模式 ==="
+    echo "[1/4] 停止服务..."
+    systemctl stop proxy-manager || true
+    
+    echo "[2/4] 备份数据库..."
+    if [ -f /opt/proxy-manager/data.db ]; then
+        cp /opt/proxy-manager/data.db /opt/proxy-manager/data.db.bak
+        echo "   数据库已备份至 data.db.bak"
+    fi
+    
+    echo "[3/4] 更新代码..."
+    # 确保 mihomo-multi-proxy 目录存在
+    if [ -d "../mihomo-multi-proxy" ]; then
+        cp -r ../mihomo-multi-proxy /opt/proxy-manager/
+    else
+        echo "错误: 找不到 ../mihomo-multi-proxy 目录"
+        exit 1
+    fi
+    
+    echo "[4/4] 更新依赖并重启..."
+    cd /opt/proxy-manager
+    ./venv/bin/pip install -r mihomo-multi-proxy/requirements.txt
+    
+    systemctl start proxy-manager
+    systemctl status proxy-manager --no-pager
+    echo "=== 升级完成 ==="
+    exit 0
+fi
+
+# 1. 创建目录
+echo "[1/5] 创建目录..."
+mkdir -p /opt/proxy-manager
+
+# 2. 复制文件 (假设你已经用 scp 把 mihomo-multi-proxy 目录传到 /tmp/mihomo-multi-proxy)
+echo "[2/5] 复制文件..."
+cp -r ../mihomo-multi-proxy /opt/proxy-manager/
+
+# 3. 安装依赖 (使用虚拟环境)
+echo "[3/5] 创建虚拟环境并安装依赖..."
+cd /opt/proxy-manager
+python3 -m venv venv
+./venv/bin/pip install --upgrade pip
+./venv/bin/pip install -r mihomo-multi-proxy/requirements.txt
+
+# 4. 安装 systemd 服务
+echo "[4/5] 配置 systemd 服务..."
+cp /opt/proxy-manager/mihomo-multi-proxy/proxy-manager.service /etc/systemd/system/
+systemctl daemon-reload
+systemctl enable proxy-manager
+systemctl start proxy-manager
+
+# 5. 检查状态
+echo "[5/5] 检查服务状态..."
+systemctl status proxy-manager --no-pager
+
+echo ""
+echo "=== 部署完成 ==="
+echo "访问地址: http://$(hostname -I | awk '{print $1}'):8080"
+echo ""
+echo "常用命令:"
+echo "  查看日志: journalctl -u proxy-manager -f"
+echo "  重启服务: systemctl restart proxy-manager"
