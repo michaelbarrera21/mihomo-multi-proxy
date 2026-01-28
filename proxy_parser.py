@@ -135,12 +135,43 @@ def parse_trojan_uri(uri):
             "password": password,
             "udp": True,
         }
+        
+        # SNI
         sni = (q.get("sni") or q.get("peer") or [None])[0]
         if sni and sni != "null":
             proxy["sni"] = sni
+            
+        # Allow Insecure
         allow_insecure = (q.get("allowInsecure") or q.get("allow_insecure") or [None])[0]
         if allow_insecure in ("1", "true", "True"):
             proxy["skip-cert-verify"] = True
+            
+        # Network & Transport Options
+        network = (q.get("type") or ["tcp"])[0]
+        if network != "tcp":
+            proxy["network"] = network
+            
+        if network == "ws":
+            ws_path = (q.get("path") or ["/"])[0]
+            ws_host = (q.get("host") or [None])[0]
+            proxy["ws-opts"] = {
+                "path": ws_path
+            }
+            if ws_host:
+                proxy["ws-opts"]["headers"] = {"Host": ws_host}
+                
+        elif network == "grpc":
+            service_name = (q.get("serviceName") or [""])[0]
+            if service_name:
+                proxy["grpc-opts"] = {
+                    "grpc-service-name": service_name
+                }
+        
+        # Flow (e.g. for xtls-rprx-vision, though less common in pure trojan than vless)
+        flow = (q.get("flow") or [None])[0]
+        if flow:
+            proxy["flow"] = flow
+
         return proxy
     except Exception:
         return None
