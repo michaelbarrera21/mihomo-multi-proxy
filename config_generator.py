@@ -22,8 +22,8 @@ def generate_config_file(output_path=CONFIG_OUTPUT_PATH):
         proxies = []
         if stype == 'subscription':
             proxies = proxy_parser.load_subscription(content)
-        elif stype in ('text', 'vless', 'yaml'):
-            # Text/YAML/VLESS all treated as text content containing proxies or config
+        elif stype in ('text', 'vless', 'yaml', 'http'):
+            # Text/YAML/VLESS/HTTP all treated as text content containing proxies or config
             proxies = proxy_parser.parse_proxies_from_text(content)
             
         if proxies:

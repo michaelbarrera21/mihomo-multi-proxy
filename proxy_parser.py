@@ -90,7 +90,7 @@ def looks_like_uri_subscription(text):
         return False
     
     lines = s.splitlines()
-    valid_schemes = ("trojan://", "ss://", "hysteria2://", "vless://", "vmess://")
+    valid_schemes = ("trojan://", "ss://", "hysteria2://", "vless://", "vmess://", "http://", "https://")
     for line in lines[:5]: # check first few lines
         if line.strip().startswith(valid_schemes):
             return True
@@ -111,6 +111,8 @@ def parse_proxies_from_uri_lines(text):
             p = parse_hysteria2_uri(line)
         elif line.startswith("vless://"):
             p = parse_vless_uri(line)
+        elif line.startswith("http://") or line.startswith("https://"):
+            p = parse_http_uri(line)
         
         if p and p.get("name"):
             proxies.append(p)
@@ -353,6 +355,56 @@ def parse_vless_uri(uri):
         return proxy
     except Exception as e:
         print(f"VLESS parse error: {e}")
+        return None
+
+def parse_http_uri(uri):
+    """
+    Parse HTTP/HTTPS proxy URI.
+    Format: http://[username:password@]host:port?skip-cert-verify=true#name
+    or: https://[username:password@]host:port?skip-cert-verify=true#name
+    """
+    try:
+        u = urlparse(uri)
+        server = u.hostname
+        port = int(u.port) if u.port else (443 if u.scheme == "https" else 80)
+        
+        if not server:
+            return None
+        
+        q = parse_qs(u.query)
+        name = unquote(u.fragment) if u.fragment else f"{server}:{port}"
+        
+        proxy = {
+            "name": name,
+            "type": "http",
+            "server": server,
+            "port": port,
+        }
+        
+        # Username/Password
+        if u.username:
+            proxy["username"] = unquote(u.username)
+        if u.password:
+            proxy["password"] = unquote(u.password)
+        
+        # HTTPS specific options
+        if u.scheme == "https":
+            proxy["tls"] = True
+            
+            # Skip cert verify (ignore certificate issues)
+            skip_cert = (q.get("skip-cert-verify") or q.get("skip_cert_verify") or [None])[0]
+            if skip_cert in ("1", "true", "True"):
+                proxy["skip-cert-verify"] = True
+            
+            # SNI
+            sni = (q.get("sni") or [None])[0]
+            if sni and sni != "null":
+                proxy["sni"] = sni
+        
+        
+        return proxy
+    except Exception as e:
+        print(f"HTTP/HTTPS parse error: {e}")
         return None
 
 def extract_mappings_from_config(config_text):

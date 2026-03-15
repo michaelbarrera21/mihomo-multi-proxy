@@ -243,7 +243,7 @@
 
                     <div>
                         <label class="block text-sm font-medium text-gray-400 mb-1">Type</label>
-                        <div class="grid grid-cols-4 gap-2">
+                        <div class="grid grid-cols-5 gap-2">
                             <button @click="newSource.type = 'subscription'"
                                 :class="{'bg-primary text-white': newSource.type==='subscription', 'bg-gray-800 text-gray-400': newSource.type!=='subscription'}"
                                 class="px-2 py-2 rounded-lg text-xs font-medium transition">Subscription</button>
@@ -256,6 +256,9 @@
                             <button @click="newSource.type = 'xray'"
                                 :class="{'bg-primary text-white': newSource.type==='xray', 'bg-gray-800 text-gray-400': newSource.type!=='xray'}"
                                 class="px-2 py-2 rounded-lg text-xs font-medium transition">Xray JSON</button>
+                            <button @click="newSource.type = 'http'"
+                                :class="{'bg-primary text-white': newSource.type==='http', 'bg-gray-800 text-gray-400': newSource.type!=='http'}"
+                                class="px-2 py-2 rounded-lg text-xs font-medium transition">HTTP/HTTPS</button>
                         </div>
                     </div>
 
@@ -269,7 +272,11 @@
                         </div>
                         <textarea v-model="newSource.content" rows="4"
                             class="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-2 text-white font-mono text-xs focus:ring-2 focus:ring-primary focus:outline-none"
-                            placeholder="Paste URL or content here..."></textarea>
+                            :placeholder="newSource.type === 'http' ? 'http://user:pass@host:port?skip-cert-verify=true#name' : 'Paste URL or content here...'"></textarea>
+                        <div v-if="newSource.type === 'http'" class="mt-2 text-xs text-gray-500">
+                            <p>格式: <code class="bg-gray-800 px-1 rounded">http://[user:pass@]host:port#name</code> 或 <code class="bg-gray-800 px-1 rounded">https://[user:pass@]host:port?skip-cert-verify=true#name</code></p>
+                            <p class="mt-1">HTTPS 代理可添加 <code class="bg-gray-800 px-1 rounded">skip-cert-verify=true</code> 忽略证书问题</p>
+                        </div>
                     </div>
                 </div>
 

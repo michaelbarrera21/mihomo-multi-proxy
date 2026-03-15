@@ -24,6 +24,15 @@ createApp({
         watch(() => newSource.value.content, (val) => {
             if (!val) return;
             const v = val.trim();
+            // HTTP/HTTPS proxy URI (check first, more specific pattern)
+            if ((v.startsWith('http://') || v.startsWith('https://')) && v.includes('#') && !v.includes('proxies:')) {
+                // Likely a single HTTP/HTTPS proxy URI with name fragment
+                const hasProxyParams = v.includes('skip-cert-verify') || v.includes('sni=') || v.split('://')[1]?.split('/')?.[0]?.includes('@');
+                if (hasProxyParams || v.match(/^https?:\/\/[^\/]+:\d+/)) {
+                    newSource.value.type = 'http';
+                    return;
+                }
+            }
             if (v.startsWith('http://') || v.startsWith('https://')) {
                 newSource.value.type = 'subscription';
             } else if (v.startsWith('vless://') || v.startsWith('ss://') || v.startsWith('trojan://') || v.startsWith('hysteria2://') || v.startsWith('vmess://')) {
