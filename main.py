@@ -22,6 +22,11 @@ class SourceCreate(BaseModel):
 class SourceUpdate(BaseModel):
     enabled: bool
 
+class SourceEdit(BaseModel):
+    name: str
+    type: str
+    content: str
+
 class GenerateRequest(BaseModel):
     output_path: Optional[str] = None
     restart_service: bool = False
@@ -70,6 +75,40 @@ def delete_source(id: int):
 def toggle_source(id: int, update: SourceUpdate):
     database.update_source_status(id, update.enabled)
     return {"status": "updated"}
+
+@app.put("/api/sources/{id}")
+def edit_source(id: int, source: SourceEdit):
+    content_to_save = source.content
+    source_type = source.type
+    
+    # Handle Xray Import (same as add)
+    if source.type == 'xray':
+        try:
+            from . import proxy_parser 
+            proxies, port = proxy_parser.parse_xray_json(source.content)
+            if not proxies:
+                 raise HTTPException(status_code=400, detail="No valid Method found in Xray config")
+                 
+            import yaml
+            content_to_save = yaml.dump({"proxies": proxies}, allow_unicode=True, sort_keys=False)
+            source_type = 'yaml'
+            
+            if port:
+                first_proxy_name = proxies[0]["name"]
+                database.save_port_mapping(first_proxy_name, port)
+                
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=f"Failed to parse Xray config: {str(e)}")
+    
+    database.update_source(id, source.name, source_type, content_to_save)
+    return {"status": "updated"}
+
+@app.get("/api/sources/{id}")
+def get_source(id: int):
+    source = database.get_source_by_id(id)
+    if not source:
+        raise HTTPException(status_code=404, detail="Source not found")
+    return source
 
 @app.get("/api/mappings")
 def get_mappings():

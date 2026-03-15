@@ -58,6 +58,22 @@ def update_source_status(id, enabled):
     conn.commit()
     conn.close()
 
+def update_source(id, name, source_type, content):
+    conn = get_db_connection()
+    conn.execute('''
+        UPDATE sources 
+        SET name = ?, type = ?, content = ?, updated_at = ? 
+        WHERE id = ?
+    ''', (name, source_type, content, datetime.now(), id))
+    conn.commit()
+    conn.close()
+
+def get_source_by_id(id):
+    conn = get_db_connection()
+    row = conn.execute('SELECT * FROM sources WHERE id = ?', (id,)).fetchone()
+    conn.close()
+    return dict(row) if row else None
+
 def delete_source(id):
     conn = get_db_connection()
     conn.execute('DELETE FROM sources WHERE id = ?', (id,))

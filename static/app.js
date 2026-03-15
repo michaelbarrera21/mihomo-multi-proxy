@@ -186,10 +186,48 @@ createApp({
 
             const reader = new FileReader();
             reader.onload = (e) => {
-                newSource.value.content = e.target.result;
+                // Set content to whichever modal is open
+                if (showEditSourceModal.value) {
+                    editSource.value.content = e.target.result;
+                } else {
+                    newSource.value.content = e.target.result;
+                }
             };
             reader.readAsText(file);
             event.target.value = '';
+        };
+
+        // Edit Source
+        const showEditSourceModal = ref(false);
+        const editSource = ref({ id: null, name: '', type: '', content: '' });
+
+        const openEditSourceModal = async (source) => {
+            editSource.value = { 
+                id: source.id, 
+                name: source.name, 
+                type: source.type, 
+                content: source.content 
+            };
+            showEditSourceModal.value = true;
+        };
+
+        const saveSourceEdit = async () => {
+            if (!editSource.value.name || !editSource.value.content) return;
+            try {
+                await fetch(`/api/sources/${editSource.value.id}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        name: editSource.value.name,
+                        type: editSource.value.type,
+                        content: editSource.value.content
+                    })
+                });
+                showEditSourceModal.value = false;
+                await fetchData();
+            } catch (e) {
+                alert('Error saving source');
+            }
         };
 
         const formatContent = (c) => {
@@ -214,6 +252,8 @@ createApp({
             success,
             showEditModal,
             editMapping,
+            showEditSourceModal,
+            editSource,
             fetchData,
             addSource,
             deleteSource,
@@ -221,8 +261,9 @@ createApp({
             deleteMapping,
             openEditModal,
             saveMapping,
+            openEditSourceModal,
+            saveSourceEdit,
             generateConfig,
-            formatContent,
             formatContent,
             uploadMappings,
             sourceFileInput,
