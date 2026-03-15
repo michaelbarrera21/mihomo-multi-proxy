@@ -20,10 +20,15 @@ createApp({
         const message = ref('');
         const success = ref(false);
 
-        // Auto-detect type
+        // Auto-detect type (only when user hasn't manually selected a specific type)
         watch(() => newSource.value.content, (val) => {
             if (!val) return;
             const v = val.trim();
+            const currentType = newSource.value.type;
+            
+            // Don't auto-switch if user has already manually selected http type
+            if (currentType === 'http') return;
+            
             // HTTP/HTTPS proxy URI (check first, more specific pattern)
             if ((v.startsWith('http://') || v.startsWith('https://')) && v.includes('#') && !v.includes('proxies:')) {
                 // Likely a single HTTP/HTTPS proxy URI with name fragment
