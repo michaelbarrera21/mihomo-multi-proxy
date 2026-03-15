@@ -138,6 +138,15 @@ createApp({
 
                 success.value = res.status === 'success';
                 message.value = res.message;
+                
+                // Add issues details to message if any
+                if (res.issues && res.issues.length > 0) {
+                    const issuesList = res.issues.map(issue => 
+                        `• ${issue.name} (${issue.type}): ${issue.reason}${issue.detail ? ' - ' + issue.detail : ''}`
+                    ).join('\n');
+                    message.value += `\n\n跳过的 Sources:\n${issuesList}`;
+                }
+                
                 if (success.value) await fetchData();
             } catch (e) {
                 success.value = false;

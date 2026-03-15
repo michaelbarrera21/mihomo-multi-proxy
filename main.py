@@ -155,7 +155,7 @@ async def import_mappings_from_config(file: UploadFile = File(...)):
 def generate_config(req: GenerateRequest):
     path = req.output_path or "../config.yaml"
     try:
-        count, out_path = config_generator.generate_config_file(path)
+        count, out_path, issues = config_generator.generate_config_file(path)
         msg = f"Generated {count} proxies to {out_path}."
         
         restart_msg = ""
@@ -165,8 +165,28 @@ def generate_config(req: GenerateRequest):
                 restart_msg = f" Service {req.service_name} restarted."
             else:
                 restart_msg = f" Service restart failed: {r_msg}"
+        
+        # Build issues summary
+        issues_summary = []
+        for issue in issues:
+            reason_text = {
+                'disabled': '已禁用',
+                'empty': '无有效代理',
+                'error': '解析错误'
+            }.get(issue['reason'], issue['reason'])
+            issues_summary.append({
+                'name': issue['source_name'],
+                'type': issue['source_type'],
+                'reason': reason_text,
+                'detail': issue['detail']
+            })
                 
-        return {"status": "success", "message": msg + restart_msg}
+        return {
+            "status": "success", 
+            "message": msg + restart_msg,
+            "proxy_count": count,
+            "issues": issues_summary
+        }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

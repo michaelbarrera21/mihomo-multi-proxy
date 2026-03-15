@@ -11,20 +11,52 @@ def generate_config_file(output_path=CONFIG_OUTPUT_PATH):
     sources = database.get_all_sources()
     all_proxies = []
     
+    # Track issues for reporting
+    issues = []  # List of {source_name, source_type, reason, detail}
+    
     # 1. Collect all proxies
     for source in sources:
         if not source['enabled']:
+            issues.append({
+                'source_name': source['name'],
+                'source_type': source['type'],
+                'reason': 'disabled',
+                'detail': 'Source is disabled'
+            })
             continue
         
         stype = source['type']
         content = source['content']
+        source_name = source['name']
         
         proxies = []
-        if stype == 'subscription':
-            proxies = proxy_parser.load_subscription(content)
-        elif stype in ('text', 'vless', 'yaml', 'http'):
-            # Text/YAML/VLESS/HTTP all treated as text content containing proxies or config
-            proxies = proxy_parser.parse_proxies_from_text(content)
+        try:
+            if stype == 'subscription':
+                proxies = proxy_parser.load_subscription(content)
+                if not proxies:
+                    issues.append({
+                        'source_name': source_name,
+                        'source_type': stype,
+                        'reason': 'empty',
+                        'detail': 'Subscription returned no proxies'
+                    })
+            elif stype in ('text', 'vless', 'yaml', 'http'):
+                # Text/YAML/VLESS/HTTP all treated as text content containing proxies or config
+                proxies = proxy_parser.parse_proxies_from_text(content)
+                if not proxies:
+                    issues.append({
+                        'source_name': source_name,
+                        'source_type': stype,
+                        'reason': 'empty',
+                        'detail': 'Content parsed but no valid proxies found'
+                    })
+        except Exception as e:
+            issues.append({
+                'source_name': source_name,
+                'source_type': stype,
+                'reason': 'error',
+                'detail': str(e)
+            })
             
         if proxies:
             all_proxies.extend(proxies)
@@ -115,7 +147,7 @@ def generate_config_file(output_path=CONFIG_OUTPUT_PATH):
     with open(output_path, "w", encoding="utf-8") as f:
         yaml.dump(final_config, f, allow_unicode=True, sort_keys=False)
         
-    return len(proxies_list), output_path
+    return len(proxies_list), output_path, issues
 
 def restart_mihomo_service(service_name="clash-meta"):
     try:
