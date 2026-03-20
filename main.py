@@ -125,10 +125,16 @@ def delete_mapping(proxy_name: str):
 
 class MappingUpdate(BaseModel):
     port: int
+    proxy_name: str | None = None
 
 @app.put("/api/mappings/{proxy_name:path}")
 def update_mapping(proxy_name: str, update: MappingUpdate):
-    database.update_port_mapping(proxy_name, update.port)
+    new_name = update.proxy_name
+    if new_name and new_name != proxy_name:
+        database.delete_port_mapping(proxy_name)
+        database.save_port_mapping(new_name, update.port)
+    else:
+        database.update_port_mapping(proxy_name, update.port)
     return {"status": "updated"}
 
 class ImportRequest(BaseModel):

@@ -419,18 +419,24 @@ createApp({
         // Edit mapping
         const showEditModal = ref(false);
         const editMapping = ref({ proxy_name: '', port: 0 });
+        let _editMappingOriginalName = '';
 
         const openEditModal = (map) => {
+            _editMappingOriginalName = map.proxy_name;
             editMapping.value = { proxy_name: map.proxy_name, port: map.port };
             showEditModal.value = true;
         };
 
         const saveMapping = async () => {
             try {
-                await fetch(`/api/mappings/${encodeURIComponent(editMapping.value.proxy_name)}`, {
+                const body = { port: editMapping.value.port };
+                if (editMapping.value.proxy_name !== _editMappingOriginalName) {
+                    body.proxy_name = editMapping.value.proxy_name;
+                }
+                await fetch(`/api/mappings/${encodeURIComponent(_editMappingOriginalName)}`, {
                     method: 'PUT',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ port: editMapping.value.port })
+                    body: JSON.stringify(body)
                 });
                 showEditModal.value = false;
                 await fetchData();
