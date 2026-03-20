@@ -1,117 +1,374 @@
 <!DOCTYPE html>
-<html lang="en" class="dark">
+<html lang="en">
 
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Proxy Manager</title>
-    <!-- Tailwind CSS -->
+    <script>
+        // Apply theme immediately to prevent flash
+        if (localStorage.getItem('theme') !== 'light') document.documentElement.classList.add('dark');
+    </script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- Vue 3 -->
     <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
-    <!-- Phosphor Icons -->
+    <script src="https://cdn.jsdelivr.net/npm/js-yaml@4/dist/js-yaml.min.js"></script>
     <script src="https://unpkg.com/@phosphor-icons/web"></script>
     <script>
         tailwind.config = {
             darkMode: 'class',
             theme: {
                 extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'monospace']
+                    },
                     colors: {
-                        primary: '#6366f1',
-                        secondary: '#4f46e5',
-                        darkbg: '#0f172a',
-                        cardbg: '#1e293b'
+                        primary: { 400: '#a5b4fc', 500: '#818cf8', 600: '#6366f1', 700: '#4f46e5' },
+                        accent: { 400: '#67e8f9', 500: '#22d3ee' },
+                        warm: { 400: '#fbbf24', 500: '#f59e0b' },
+                        surface: { 50: '#f8fafc', 100: '#f1f5f9', 700: '#1e293b', 800: '#0f172a', 900: '#020617' }
                     }
                 }
             }
         }
     </script>
     <style>
-        body {
-            background-color: #0f172a;
-            color: #e2e8f0;
+        * { font-family: 'Inter', system-ui, sans-serif; }
+
+        /* ===== Theme Variables ===== */
+        :root {
+            --bg-body: #f8fafc;
+            --bg-glow1: rgba(99,102,241,.05);
+            --bg-glow2: rgba(6,182,212,.03);
+            --bg-glow3: rgba(139,92,246,.03);
+            --text-primary: #0f172a;
+            --text-secondary: #475569;
+            --text-muted: #94a3b8;
+            --card-bg: rgba(255,255,255,.75);
+            --card-blur: blur(20px) saturate(1.1);
+            --card-border: rgba(148,163,184,.15);
+            --card-shadow: 0 1px 3px rgba(0,0,0,.04), 0 4px 20px rgba(0,0,0,.04);
+            --card-hover-border: rgba(99,102,241,.2);
+            --card-hover-shadow: 0 4px 28px rgba(0,0,0,.07);
+            --input-bg: rgba(255,255,255,.8);
+            --input-border: rgba(148,163,184,.2);
+            --focus-border: rgba(99,102,241,.45);
+            --focus-ring: rgba(99,102,241,.08);
+            --sub-bg: rgba(241,245,249,.8);
+            --sub-border: rgba(148,163,184,.12);
+            --ghost-hover-bg: rgba(148,163,184,.08);
+            --ghost-hover-color: #0f172a;
+            --toggle-bg: rgba(148,163,184,.25);
+            --toggle-active: rgba(99,102,241,.6);
+            --modal-overlay: rgba(100,116,139,.25);
+            --modal-bg: linear-gradient(180deg, rgba(255,255,255,.97), rgba(248,250,252,.98));
+            --modal-border: rgba(148,163,184,.12);
+            --modal-shadow: 0 25px 60px rgba(0,0,0,.1);
+            --table-head-bg: rgba(248,250,252,.95);
+            --scrollbar-thumb: rgba(148,163,184,.2);
+            --scrollbar-hover: rgba(148,163,184,.35);
+            --pill-sub-bg: rgba(6,182,212,.1); --pill-sub-color: #0891b2;
+            --pill-vless-bg: rgba(99,102,241,.1); --pill-vless-color: #4f46e5;
+            --pill-yaml-bg: rgba(34,197,94,.1); --pill-yaml-color: #16a34a;
+            --pill-xray-bg: rgba(245,158,11,.1); --pill-xray-color: #d97706;
+            --pill-http-bg: rgba(244,63,94,.1); --pill-http-color: #e11d48;
+            --warning-bg: rgba(245,158,11,.08);
+            --warning-border: rgba(245,158,11,.2);
+            --warning-color: #b45309;
+            --success-bg: rgba(16,185,129,.08);
+            --success-border: rgba(16,185,129,.2);
+            --success-color: #059669;
+            --error-bg: rgba(244,63,94,.08);
+            --error-border: rgba(244,63,94,.2);
+            --error-color: #e11d48;
+            --info-pill-bg: rgba(245,158,11,.1);
+            --info-pill-color: #b45309;
+            --dot-color: #16a34a;
+            --code-bg: rgba(241,245,249,.8);
+            --code-color: #475569;
+            --heading-color: #334155;
+        }
+        html.dark {
+            --bg-body: #020617;
+            --bg-glow1: rgba(99,102,241,.15);
+            --bg-glow2: rgba(6,182,212,.08);
+            --bg-glow3: rgba(139,92,246,.08);
+            --text-primary: #e2e8f0;
+            --text-secondary: #94a3b8;
+            --text-muted: #64748b;
+            --card-bg: rgba(15,23,42,.6);
+            --card-border: rgba(148,163,184,.08);
+            --card-shadow: 0 0 0 1px rgba(148,163,184,.04), 0 8px 40px rgba(0,0,0,.3);
+            --card-hover-border: rgba(99,102,241,.2);
+            --card-hover-shadow: 0 0 0 1px rgba(99,102,241,.1), 0 8px 40px rgba(0,0,0,.4), 0 0 60px -20px rgba(99,102,241,.1);
+            --input-bg: rgba(15,23,42,.8);
+            --input-border: rgba(148,163,184,.12);
+            --focus-border: rgba(99,102,241,.5);
+            --focus-ring: rgba(99,102,241,.1);
+            --sub-bg: rgba(30,41,59,.5);
+            --sub-border: rgba(148,163,184,.08);
+            --ghost-hover-bg: rgba(148,163,184,.08);
+            --ghost-hover-color: #f8fafc;
+            --toggle-bg: rgba(148,163,184,.2);
+            --toggle-active: rgba(99,102,241,.6);
+            --modal-overlay: rgba(2,6,23,.7);
+            --modal-bg: linear-gradient(180deg, rgba(30,41,59,.95), rgba(15,23,42,.98));
+            --modal-border: rgba(148,163,184,.1);
+            --modal-shadow: 0 25px 60px rgba(0,0,0,.5), 0 0 80px -20px rgba(99,102,241,.15);
+            --table-head-bg: rgba(2,6,23,.9);
+            --scrollbar-thumb: rgba(148,163,184,.2);
+            --scrollbar-hover: rgba(148,163,184,.35);
+            --pill-sub-bg: rgba(6,182,212,.15); --pill-sub-color: #22d3ee;
+            --pill-vless-bg: rgba(99,102,241,.15); --pill-vless-color: #818cf8;
+            --pill-yaml-bg: rgba(34,197,94,.15); --pill-yaml-color: #4ade80;
+            --pill-xray-bg: rgba(245,158,11,.15); --pill-xray-color: #fbbf24;
+            --pill-http-bg: rgba(244,63,94,.15); --pill-http-color: #fb7185;
+            --warning-bg: rgba(245,158,11,.1);
+            --warning-border: rgba(245,158,11,.2);
+            --warning-color: #fbbf24;
+            --success-bg: rgba(16,185,129,.1);
+            --success-border: rgba(16,185,129,.2);
+            --success-color: #34d399;
+            --error-bg: rgba(244,63,94,.1);
+            --error-border: rgba(244,63,94,.2);
+            --error-color: #fb7185;
+            --info-pill-bg: rgba(245,158,11,.15);
+            --info-pill-color: #fbbf24;
+            --dot-color: #22c55e;
+            --code-bg: rgba(30,41,59,.6);
+            --code-color: #94a3b8;
+            --heading-color: #cbd5e1;
         }
 
-        .glass {
-            background: rgba(30, 41, 59, 0.7);
-            backdrop-filter: blur(10px);
-            border: 1px solid rgba(255, 255, 255, 0.1);
+        /* ===== Base ===== */
+        body {
+            background: var(--bg-body);
+            color: var(--text-primary);
+            transition: background .3s ease, color .3s ease;
         }
+        body::before {
+            content: '';
+            position: fixed;
+            inset: 0;
+            background:
+                radial-gradient(ellipse 80% 50% at 50% -20%, var(--bg-glow1), transparent),
+                radial-gradient(ellipse 60% 40% at 80% 50%, var(--bg-glow2), transparent),
+                radial-gradient(ellipse 50% 50% at 20% 80%, var(--bg-glow3), transparent);
+            pointer-events: none;
+            z-index: 0;
+            transition: opacity .3s ease;
+        }
+        #app { position: relative; z-index: 1; }
+
+        /* ===== Cards ===== */
+        .card {
+            background: var(--card-bg);
+            backdrop-filter: var(--card-blur);
+            border: 1px solid var(--card-border);
+            box-shadow: var(--card-shadow);
+            transition: border-color .3s, box-shadow .3s, background .3s;
+        }
+        .card:hover {
+            border-color: var(--card-hover-border);
+            box-shadow: var(--card-hover-shadow);
+        }
+        .card-static {
+            background: var(--card-bg);
+            backdrop-filter: var(--card-blur);
+            border: 1px solid var(--card-border);
+            box-shadow: var(--card-shadow);
+            transition: background .3s, border-color .3s;
+        }
+
+        /* ===== Inputs ===== */
+        .input-field {
+            background: var(--input-bg);
+            border: 1px solid var(--input-border);
+            transition: border-color .2s, box-shadow .2s, background .3s;
+        }
+        .input-field:focus {
+            border-color: var(--focus-border);
+            box-shadow: 0 0 0 3px var(--focus-ring);
+            outline: none;
+        }
+
+        /* ===== Buttons ===== */
+        .btn-primary {
+            background: linear-gradient(135deg, #6366f1, #8b5cf6);
+            box-shadow: 0 4px 20px rgba(99,102,241,.3), inset 0 1px 0 rgba(255,255,255,.1);
+            transition: transform .15s, box-shadow .2s;
+        }
+        .btn-primary:hover {
+            box-shadow: 0 6px 30px rgba(99,102,241,.4), inset 0 1px 0 rgba(255,255,255,.1);
+        }
+        .btn-primary:active { transform: scale(.97); }
+        .btn-primary:disabled { opacity: .5; cursor: not-allowed; transform: none; }
+
+        .btn-ghost { transition: background .2s, color .2s; }
+        .btn-ghost:hover { background: var(--ghost-hover-bg); color: var(--ghost-hover-color); }
+
+        /* ===== Type Pills ===== */
+        .type-pill {
+            font-size: 10px;
+            letter-spacing: .06em;
+            padding: 2px 8px;
+            border-radius: 6px;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+        .type-subscription { background: var(--pill-sub-bg); color: var(--pill-sub-color); }
+        .type-vless { background: var(--pill-vless-bg); color: var(--pill-vless-color); }
+        .type-text, .type-yaml { background: var(--pill-yaml-bg); color: var(--pill-yaml-color); }
+        .type-xray { background: var(--pill-xray-bg); color: var(--pill-xray-color); }
+        .type-http { background: var(--pill-http-bg); color: var(--pill-http-color); }
+
+        /* ===== Toggle ===== */
+        .toggle-track {
+            width: 40px; height: 22px;
+            background: var(--toggle-bg);
+            border-radius: 11px;
+            position: relative;
+            cursor: pointer;
+            transition: background .2s;
+        }
+        .toggle-track.active { background: var(--toggle-active); }
+        .toggle-thumb {
+            width: 16px; height: 16px;
+            background: #fff;
+            border-radius: 50%;
+            position: absolute;
+            top: 3px; left: 3px;
+            transition: transform .2s;
+            box-shadow: 0 1px 3px rgba(0,0,0,.2);
+        }
+        .toggle-track.active .toggle-thumb { transform: translateX(18px); }
+
+        /* ===== Modal ===== */
+        .modal-backdrop {
+            background: var(--modal-overlay);
+            backdrop-filter: blur(8px);
+        }
+        .modal-panel {
+            background: var(--modal-bg);
+            border: 1px solid var(--modal-border);
+            box-shadow: var(--modal-shadow);
+        }
+
+        /* ===== Scrollbar ===== */
+        .custom-scrollbar::-webkit-scrollbar { width: 4px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: var(--scrollbar-thumb); border-radius: 2px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: var(--scrollbar-hover); }
+
+        @keyframes fadeIn { from { opacity:0; transform: scale(.96) translateY(8px); } to { opacity:1; transform: scale(1) translateY(0); } }
+        .animate-modal { animation: fadeIn .2s ease-out; }
+
+        /* ===== Theme Toggle Button ===== */
+        .theme-toggle {
+            position: relative;
+            width: 36px; height: 36px;
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: background .2s, color .2s;
+            color: var(--text-muted);
+        }
+        .theme-toggle:hover { background: var(--ghost-hover-bg); color: var(--ghost-hover-color); }
+
+        /* ===== Theme-aware utility classes ===== */
+        .t-heading { color: var(--heading-color); }
+        .t-body { color: var(--text-primary); }
+        .t-secondary { color: var(--text-secondary); }
+        .t-muted { color: var(--text-muted); }
+        .surface-subtle {
+            background: var(--sub-bg);
+            border: 1px solid var(--sub-border);
+        }
+        .surface-subtle-hover:hover { background: var(--ghost-hover-bg); }
+        .table-head-bg { background: var(--table-head-bg); backdrop-filter: blur(4px); }
+        .row-border { border-top: 1px solid var(--sub-border); }
+        .row-hover:hover { background: var(--ghost-hover-bg); }
+        .code-inline { background: var(--code-bg); color: var(--code-color); }
     </style>
 </head>
 
-<body class="min-h-screen p-6">
-    <div id="app" class="max-w-6xl mx-auto space-y-8">
+<body class="min-h-screen p-4 sm:p-8">
+    <div id="app" class="max-w-7xl mx-auto space-y-8">
         <!-- Header -->
-        <header class="flex justify-between items-center pb-6 border-b border-gray-700">
+        <header class="flex justify-between items-end pt-4 pb-6">
             <div>
-                <h1
-                    class="text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-primary to-purple-400">
-                    Proxy Service Manager
-                </h1>
-                <p class="text-gray-400 mt-1">Manage your recurring proxy subscriptions and services</p>
+                <div class="flex items-center gap-3 mb-1">
+                    <div class="w-9 h-9 rounded-xl bg-gradient-to-br from-primary-600 to-primary-400 flex items-center justify-center shadow-lg shadow-primary-600/15">
+                        <i class="ph-bold ph-shield-checkered text-white text-lg"></i>
+                    </div>
+                    <h1 class="text-2xl font-bold tracking-tight t-body">Proxy Manager</h1>
+                </div>
+                <p class="text-sm t-muted ml-12">Manage proxy subscriptions and port mappings</p>
             </div>
-            <div class="flex gap-4">
-                <button @click="fetchData" class="p-2 rounded-full hover:bg-gray-700 transition" title="Refresh">
-                    <i class="ph ph-arrows-clockwise text-xl"></i>
-                </button>
-            </div>
+            <button @click="fetchData"
+                class="p-2.5 rounded-xl btn-ghost t-muted"
+                title="Refresh">
+                <i class="ph ph-arrows-clockwise text-lg"></i>
+            </button>
+            <button @click="toggleTheme" class="theme-toggle" :title="isDark ? 'Switch to Light' : 'Switch to Dark'">
+                <i :class="isDark ? 'ph ph-sun' : 'ph ph-moon'" class="text-lg"></i>
+            </button>
         </header>
 
-        <!-- Main Content Grid -->
-        <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        <!-- Main Grid -->
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
 
-            <!-- Left Column: Sources -->
-            <div class="lg:col-span-2 space-y-6">
+            <!-- Sources Column -->
+            <div class="lg:col-span-7 space-y-5">
                 <div class="flex justify-between items-center">
-                    <h2 class="text-xl font-semibold flex items-center gap-2">
-                        <i class="ph ph-list-dashes"></i> Sources
+                    <h2 class="text-sm font-semibold t-heading uppercase tracking-wider flex items-center gap-2">
+                        <i class="ph ph-stack text-primary-400"></i> Sources
+                        <span class="text-xs font-normal t-muted">({{ sources.length }})</span>
                     </h2>
-                    <div class="flex gap-2">
-                        <button @click="showAddModal = true"
-                            class="bg-primary hover:bg-secondary text-white px-4 py-2 rounded-lg flex items-center gap-2 transition shadow-lg shadow-indigo-500/20">
-                            <i class="ph ph-plus"></i> Add Source
-                        </button>
-                    </div>
-                    <!-- Hidden File Inputs -->
-                    <input type="file" ref="mappingFileInput" class="hidden" @change="uploadMappings"
-                        accept=".yaml,.yml">
-                    <input type="file" ref="sourceFileInput" class="hidden" @change="onSourceFileChange"
-                        accept=".json,.yaml,.yml,.txt">
+                    <button @click="showAddModal = true"
+                        class="btn-primary text-white text-sm font-medium px-4 py-2 rounded-xl flex items-center gap-2">
+                        <i class="ph-bold ph-plus text-xs"></i> Add Source
+                    </button>
+                    <input type="file" ref="mappingFileInput" class="hidden" @change="uploadMappings" accept=".yaml,.yml">
+                    <input type="file" ref="sourceFileInput" class="hidden" @change="onSourceFileChange" accept=".json,.yaml,.yml,.txt">
                 </div>
 
-                <div class="grid gap-4">
-                    <div v-if="sources.length === 0" class="p-8 text-center text-gray-500 glass rounded-xl">
-                        No sources added yet.
+                <div class="space-y-3">
+                    <div v-if="sources.length === 0"
+                        class="card-static rounded-2xl p-12 text-center">
+                        <div class="inline-flex items-center justify-center w-14 h-14 rounded-2xl surface-subtle mb-4">
+                            <i class="ph ph-cloud-slash text-2xl text-slate-500"></i>
+                        </div>
+                        <p class="text-slate-500 text-sm">No sources added yet</p>
                     </div>
+
                     <div v-for="source in sources" :key="source.id"
-                        class="glass rounded-xl p-5 hover:border-primary/50 transition duration-300 relative group">
-                        <div class="flex justify-between items-start">
-                            <div>
-                                <div class="flex items-center gap-2 mb-2">
-                                    <span class="text-lg font-bold text-white">{{ source.name }}</span>
-                                    <span class="text-xs px-2 py-1 rounded bg-gray-700 uppercase tracking-wider">{{
-                                        source.type }}</span>
+                        class="card rounded-2xl p-5 group">
+                        <div class="flex justify-between items-start gap-4">
+                            <div class="min-w-0 flex-1">
+                                <div class="flex items-center gap-2.5 mb-1.5">
+                                    <span class="text-[15px] font-semibold t-body truncate">{{ source.name }}</span>
+                                    <span class="type-pill" :class="'type-' + source.type">{{ source.type }}</span>
                                 </div>
-                                <div class="text-sm text-gray-400 font-mono truncate max-w-md">
+                                <div class="text-xs t-muted font-mono truncate">
                                     {{ formatContent(source.content) }}
                                 </div>
                             </div>
-                            <div class="flex items-center gap-3">
-                                <label class="relative inline-flex items-center cursor-pointer">
-                                    <input type="checkbox" :checked="source.enabled" @change="toggleSource(source)"
-                                        class="sr-only peer">
-                                    <div
-                                        class="w-11 h-6 bg-gray-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary">
-                                    </div>
-                                </label>
+                            <div class="flex items-center gap-2 flex-shrink-0">
+                                <div class="toggle-track" :class="{ active: source.enabled }" @click="toggleSource(source)">
+                                    <div class="toggle-thumb"></div>
+                                </div>
                                 <button @click="openEditSourceModal(source)"
-                                    class="text-gray-500 hover:text-primary p-1 opacity-0 group-hover:opacity-100 transition">
-                                    <i class="ph ph-pencil text-lg"></i>
+                                    class="p-1.5 rounded-lg text-slate-600 hover:text-primary-400 opacity-0 group-hover:opacity-100 transition-all btn-ghost">
+                                    <i class="ph ph-pencil-simple text-base"></i>
                                 </button>
                                 <button @click="deleteSource(source.id)"
-                                    class="text-gray-500 hover:text-red-400 p-1 opacity-0 group-hover:opacity-100 transition">
-                                    <i class="ph ph-trash text-xl"></i>
+                                    class="p-1.5 rounded-lg text-slate-600 hover:text-rose-400 opacity-0 group-hover:opacity-100 transition-all btn-ghost">
+                                    <i class="ph ph-trash-simple text-base"></i>
                                 </button>
                             </div>
                         </div>
@@ -119,272 +376,313 @@
                 </div>
             </div>
 
-            <!-- Right Column: Control & Status -->
-            <div class="space-y-6">
-                <!-- Generator Card -->
-                <div class="glass rounded-xl p-6 space-y-4 glow-border">
-                    <h2 class="text-xl font-semibold flex items-center gap-2">
-                        <i class="ph ph-sliders"></i> Actions
+            <!-- Right Column -->
+            <div class="lg:col-span-5 space-y-5">
+                <!-- Actions Card -->
+                <div class="card-static rounded-2xl p-6 space-y-5">
+                    <h2 class="text-sm font-semibold t-heading uppercase tracking-wider flex items-center gap-2">
+                        <i class="ph ph-lightning text-accent-400"></i> Actions
                     </h2>
 
-                    <div class="space-y-4">
-                        <div class="flex items-center gap-3 p-3 bg-gray-800/50 rounded-lg border border-gray-700">
-                            <input type="checkbox" id="restart" v-model="restartService"
-                                class="w-4 h-4 text-primary rounded border-gray-600 focus:ring-primary bg-gray-700">
-                            <label for="restart" class="text-sm text-gray-300 select-none cursor-pointer">
-                                Restart Mihomo Service
-                            </label>
-                        </div>
+                    <div class="space-y-3">
+                        <label class="flex items-center gap-3 p-3 rounded-xl surface-subtle surface-subtle-hover cursor-pointer transition">
+                            <input type="checkbox" v-model="restartService"
+                                class="w-4 h-4 rounded border-slate-300 dark:border-slate-600 text-primary-500 focus:ring-primary-500/30 bg-slate-100 dark:bg-slate-700/80">
+                            <span class="text-sm t-secondary select-none">Restart Mihomo Service</span>
+                        </label>
 
-                        <div class="flex items-center gap-3 p-3 bg-gray-800/50 rounded-lg border border-gray-700">
-                            <div class="flex-1">
-                                <label for="svc" class="text-xs text-gray-400 block mb-1">Service Name</label>
-                                <input type="text" id="svc" v-model="serviceName"
-                                    class="w-full bg-transparent border-none text-sm p-0 focus:ring-0"
+                        <div class="p-3 rounded-xl surface-subtle group/field">
+                            <label class="text-[10px] font-medium t-muted uppercase tracking-wider block mb-1.5">Service Name</label>
+                            <div class="flex items-center gap-2">
+                                <input type="text" v-model="serviceName"
+                                    class="w-full bg-transparent text-sm t-body p-0 border-b border-dashed border-transparent focus:border-primary-400 dark:focus:border-primary-400 focus:ring-0 transition placeholder:text-slate-400 dark:placeholder:text-slate-600 group-hover/field:border-slate-300 dark:group-hover/field:border-slate-600"
                                     placeholder="clash-meta">
+                                <i class="ph ph-pencil-simple text-xs t-muted opacity-0 group-hover/field:opacity-60 transition"></i>
                             </div>
                         </div>
 
-                        <div class="flex items-center gap-3 p-3 bg-gray-800/50 rounded-lg border border-gray-700">
-                            <div class="flex-1">
-                                <label for="path" class="text-xs text-gray-400 block mb-1">Output Path</label>
-                                <input type="text" id="path" v-model="outputPath"
-                                    class="w-full bg-transparent border-none text-sm p-0 focus:ring-0"
+                        <div class="p-3 rounded-xl surface-subtle group/field">
+                            <label class="text-[10px] font-medium t-muted uppercase tracking-wider block mb-1.5">Output Path</label>
+                            <div class="flex items-center gap-2">
+                                <input type="text" v-model="outputPath"
+                                    class="w-full bg-transparent text-sm t-body p-0 border-b border-dashed border-transparent focus:border-primary-400 dark:focus:border-primary-400 focus:ring-0 font-mono transition placeholder:text-slate-400 dark:placeholder:text-slate-600 group-hover/field:border-slate-300 dark:group-hover/field:border-slate-600"
                                     placeholder="/etc/mihomo/config.yaml">
+                                <i class="ph ph-pencil-simple text-xs t-muted opacity-0 group-hover/field:opacity-60 transition"></i>
                             </div>
                         </div>
 
                         <button @click="generateConfig" :disabled="isGenerating"
-                            class="w-full bg-gradient-to-r from-primary to-purple-600 hover:from-secondary hover:to-purple-700 text-white font-semibold py-3 rounded-xl shadow-lg transition transform active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed flex justify-center items-center gap-2">
-                            <i v-if="isGenerating" class="ph ph-spinner animate-spin text-xl"></i>
-                            <span v-else>Generate & Apply</span>
+                            class="btn-primary w-full text-white font-semibold py-3 rounded-xl flex justify-center items-center gap-2 text-sm">
+                            <i v-if="isGenerating" class="ph ph-circle-notch animate-spin text-lg"></i>
+                            <template v-else>
+                                <i class="ph-bold ph-rocket-launch text-sm"></i>
+                                Generate &amp; Apply
+                            </template>
                         </button>
                     </div>
 
                     <div v-if="message"
-                        :class="{'bg-green-500/10 text-green-400': success, 'bg-red-500/10 text-red-400': !success}"
-                        class="p-4 rounded-lg text-sm border border-current mt-4 whitespace-pre-wrap">
+                        :class="success
+                            ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20'
+                            : 'bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/20'"
+                        class="p-4 rounded-xl text-xs border whitespace-pre-wrap leading-relaxed font-mono">
                         {{ message }}
                     </div>
                 </div>
 
-                <!-- Port Mapping Preview -->
-                <div class="glass rounded-xl p-6 max-h-[500px] overflow-y-auto custom-scrollbar">
-                    <div
-                        class="flex justify-between items-center mb-4 sticky top-0 bg-transparent backdrop-blur-md z-1">
-                        <h2 class="text-xl font-semibold flex items-center gap-2">
-                            <i class="ph ph-plugs-connected"></i> Port Mappings
+                <!-- Port Mappings Card -->
+                <div class="card-static rounded-2xl overflow-hidden">
+                    <div class="p-5 pb-3 flex justify-between items-center">
+                        <h2 class="text-sm font-semibold t-heading uppercase tracking-wider flex items-center gap-2">
+                            <i class="ph ph-plugs-connected text-primary-400"></i> Port Mappings
+                            <span class="text-xs font-normal t-muted">({{ mappings.length }})</span>
                         </h2>
-                        <span class="text-xs text-gray-500">{{ mappings.length }} items</span>
-                        <div class="ml-auto">
-                            <button @click="$refs.mappingFileInput.click()"
-                                class="text-xs bg-gray-700 hover:bg-gray-600 px-3 py-1 rounded transition"
-                                title="Import from config.yaml">
-                                <i class="ph ph-upload-simple"></i> Import
-                            </button>
-                        </div>
+                        <button @click="$refs.mappingFileInput.click()"
+                            class="text-[11px] font-medium t-muted px-3 py-1.5 rounded-lg btn-ghost flex items-center gap-1.5"
+                            title="Import from config.yaml">
+                            <i class="ph ph-upload-simple text-xs"></i> Import
+                        </button>
                     </div>
 
-                    <!-- Duplicates Warning -->
                     <div v-if="duplicates.length > 0"
-                        class="mb-4 p-3 bg-yellow-500/10 border border-yellow-500/30 rounded-lg">
-                        <div class="text-yellow-400 text-sm font-medium mb-2"><i class="ph ph-warning"></i> 检测到 {{
-                            duplicates.length }} 个重复端口</div>
-                        <div v-for="dup in duplicates" :key="dup.port" class="text-xs text-yellow-300/70">
+                        class="mx-5 mb-3 p-3 bg-amber-500/10 border border-amber-500/20 rounded-xl">
+                        <div class="text-amber-400 text-xs font-medium mb-1.5 flex items-center gap-1.5">
+                            <i class="ph ph-warning-circle"></i> {{ duplicates.length }} 个重复端口
+                        </div>
+                        <div v-for="dup in duplicates" :key="dup.port" class="text-[11px] text-amber-300/60">
                             端口 {{ dup.port }}: {{ dup.names }}
                         </div>
                     </div>
 
-                    <table class="w-full text-sm text-left">
-                        <thead class="text-xs text-gray-400 uppercase bg-gray-800/50 sticky top-8">
-                            <tr>
-                                <th class="px-3 py-2 rounded-l-lg">Port</th>
-                                <th class="px-3 py-2">Proxy Name</th>
-                                <th class="px-3 py-2 rounded-r-lg w-10"></th>
-                            </tr>
-                        </thead>
-                        <tbody class="divide-y divide-gray-700">
-                            <tr v-for="map in mappings" :key="map.proxy_name"
-                                class="hover:bg-gray-800/30 transition group">
-                                <td class="px-3 py-2 font-mono text-primary font-bold">{{ map.port }}</td>
-                                <td class="px-3 py-2 text-gray-300 truncate max-w-[150px]" :title="map.proxy_name">{{
-                                    map.proxy_name }}</td>
-                                <td class="px-3 py-2 flex gap-1">
-                                    <button @click="openEditModal(map)"
-                                        class="text-gray-500 hover:text-primary opacity-0 group-hover:opacity-100 transition"
-                                        title="Edit">
-                                        <i class="ph ph-pencil"></i>
-                                    </button>
-                                    <button @click="deleteMapping(map.proxy_name)"
-                                        class="text-gray-500 hover:text-red-400 opacity-0 group-hover:opacity-100 transition"
-                                        title="Delete">
-                                        <i class="ph ph-trash"></i>
-                                    </button>
-                                </td>
-                            </tr>
-                        </tbody>
-                    </table>
+                    <div class="max-h-[420px] overflow-y-auto custom-scrollbar px-5 pb-5">
+                        <table class="w-full text-sm">
+                            <thead class="sticky top-0 z-10">
+                                <tr class="text-[10px] font-semibold t-muted uppercase tracking-wider">
+                                    <td class="py-2 pr-3 table-head-bg">Port</td>
+                                    <td class="py-2 table-head-bg">Proxy Name</td>
+                                    <td class="py-2 w-16 table-head-bg"></td>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr v-for="map in mappings" :key="map.proxy_name"
+                                    class="group row-border row-hover transition">
+                                    <td class="py-2.5 pr-3 font-mono text-primary-400 font-semibold text-xs">{{ map.port }}</td>
+                                    <td class="py-2.5 t-secondary text-xs truncate max-w-[180px]" :title="map.proxy_name">{{ map.proxy_name }}</td>
+                                    <td class="py-2.5 text-right">
+                                        <div class="flex gap-0.5 justify-end opacity-0 group-hover:opacity-100 transition">
+                                            <button @click="openEditModal(map)" class="p-1 rounded text-slate-600 hover:text-primary-400 transition" title="Edit">
+                                                <i class="ph ph-pencil-simple text-sm"></i>
+                                            </button>
+                                            <button @click="deleteMapping(map.proxy_name)" class="p-1 rounded text-slate-600 hover:text-rose-400 transition" title="Delete">
+                                                <i class="ph ph-trash-simple text-sm"></i>
+                                            </button>
+                                        </div>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
                 </div>
             </div>
         </div>
 
-        <!-- Add Modal -->
-        <div v-if="showAddModal"
-            class="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50">
-            <div class="bg-gray-900 rounded-2xl w-full max-w-lg p-6 border border-gray-700 shadow-2xl space-y-6">
+        <!-- ===== Add Source Modal ===== -->
+        <div v-if="showAddModal" class="fixed inset-0 modal-backdrop flex items-center justify-center z-50 p-4">
+            <div class="modal-panel rounded-2xl w-full max-w-lg p-6 space-y-5 animate-modal">
                 <div class="flex justify-between items-center">
-                    <h3 class="text-xl font-bold">Add Source</h3>
-                    <button @click="showAddModal = false" class="text-gray-400 hover:text-white"><i
-                            class="ph ph-x text-xl"></i></button>
-                </div>
-
-                <div class="space-y-4">
-                    <div>
-                        <label class="block text-sm font-medium text-gray-400 mb-1">Name</label>
-                        <input v-model="newSource.name" type="text"
-                            class="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-2 text-white focus:ring-2 focus:ring-primary focus:outline-none">
-                    </div>
-
-                    <div>
-                        <label class="block text-sm font-medium text-gray-400 mb-1">Type</label>
-                        <div class="grid grid-cols-5 gap-2">
-                            <button @click="newSource.type = 'subscription'"
-                                :class="{'bg-primary text-white': newSource.type==='subscription', 'bg-gray-800 text-gray-400': newSource.type!=='subscription'}"
-                                class="px-2 py-2 rounded-lg text-xs font-medium transition">Subscription</button>
-                            <button @click="newSource.type = 'vless'"
-                                :class="{'bg-primary text-white': newSource.type==='vless', 'bg-gray-800 text-gray-400': newSource.type!=='vless'}"
-                                class="px-2 py-2 rounded-lg text-xs font-medium transition">VLESS/URI</button>
-                            <button @click="newSource.type = 'text'"
-                                :class="{'bg-primary text-white': newSource.type==='text', 'bg-gray-800 text-gray-400': newSource.type!=='text'}"
-                                class="px-2 py-2 rounded-lg text-xs font-medium transition">YAML/Text</button>
-                            <button @click="newSource.type = 'xray'"
-                                :class="{'bg-primary text-white': newSource.type==='xray', 'bg-gray-800 text-gray-400': newSource.type!=='xray'}"
-                                class="px-2 py-2 rounded-lg text-xs font-medium transition">Xray JSON</button>
-                            <button @click="newSource.type = 'http'"
-                                :class="{'bg-primary text-white': newSource.type==='http', 'bg-gray-800 text-gray-400': newSource.type!=='http'}"
-                                class="px-2 py-2 rounded-lg text-xs font-medium transition">HTTP/HTTPS</button>
-                        </div>
-                    </div>
-
-                    <div>
-                        <div class="flex justify-between items-center mb-1">
-                            <label class="block text-sm font-medium text-gray-400">Content</label>
-                            <button @click="loadSourceFile"
-                                class="text-xs text-primary hover:text-white flex items-center gap-1">
-                                <i class="ph ph-folder-open"></i> Load File
-                            </button>
-                        </div>
-                        <textarea v-model="newSource.content" rows="4"
-                            class="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-2 text-white font-mono text-xs focus:ring-2 focus:ring-primary focus:outline-none"
-                            :placeholder="newSource.type === 'http' ? 'http://user:pass@host:port?skip-cert-verify=true#name' : 'Paste URL or content here...'"></textarea>
-                        <div v-if="newSource.type === 'http'" class="mt-2 text-xs text-gray-500">
-                            <p>格式: <code class="bg-gray-800 px-1 rounded">http://[user:pass@]host:port#name</code> 或 <code class="bg-gray-800 px-1 rounded">https://[user:pass@]host:port?skip-cert-verify=true#name</code></p>
-                            <p class="mt-1">HTTPS 代理可添加 <code class="bg-gray-800 px-1 rounded">skip-cert-verify=true</code> 忽略证书问题</p>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="flex justify-end gap-3 pt-2">
-                    <button @click="showAddModal = false"
-                        class="px-4 py-2 rounded-lg text-gray-400 hover:bg-gray-800 transition">Cancel</button>
-                    <button @click="addSource"
-                        class="bg-primary hover:bg-secondary text-white px-6 py-2 rounded-lg font-medium transition shadow-lg">Save</button>
-                </div>
-            </div>
-        </div>
-        <!-- Edit Mapping Modal -->
-        <div v-if="showEditModal"
-            class="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50">
-            <div class="bg-gray-900 rounded-2xl w-full max-w-sm p-6 border border-gray-700 shadow-2xl space-y-4">
-                <div class="flex justify-between items-center">
-                    <h3 class="text-xl font-bold">编辑端口映射</h3>
-                    <button @click="showEditModal = false" class="text-gray-400 hover:text-white">
-                        <i class="ph ph-x text-xl"></i>
+                    <h3 class="text-lg font-bold t-body">Add Source</h3>
+                    <button @click="closeAddModal" class="p-1.5 rounded-lg btn-ghost t-muted">
+                        <i class="ph ph-x text-lg"></i>
                     </button>
                 </div>
 
-                <div class="space-y-3">
+                <div class="space-y-4">
                     <div>
-                        <label class="block text-xs text-gray-400 mb-1">Proxy Name</label>
-                        <div class="text-white text-sm font-mono bg-gray-800 px-3 py-2 rounded-lg truncate">{{
-                            editMapping.proxy_name }}</div>
+                        <label class="text-[11px] font-medium t-muted uppercase tracking-wider block mb-1.5">Name</label>
+                        <input v-model="newSource.name" type="text"
+                            class="input-field w-full rounded-xl px-4 py-2.5 text-sm t-body"
+                            :placeholder="parsedNewProxies.length === 1 ? 'Auto-synced from content' : 'Source name'">
                     </div>
+
+                    <!-- Proxy Names (multi-proxy) -->
+                    <div v-if="parsedNewProxies.length > 1">
+                        <div class="flex justify-between items-center mb-2">
+                            <label class="text-[11px] font-medium t-muted uppercase tracking-wider">Proxy Names</label>
+                            <span class="text-[11px] t-muted">
+                                {{ parsedNewProxies.filter(p => !p.isFake).length }} proxies
+                                <span v-if="parsedNewProxies.some(p => p.isFake)" class="text-amber-500 dark:text-amber-400/70">
+                                    · {{ parsedNewProxies.filter(p => p.isFake).length }} info
+                                </span>
+                            </span>
+                        </div>
+                        <div class="max-h-44 overflow-y-auto custom-scrollbar space-y-0.5 rounded-xl surface-subtle p-2">
+                            <div v-for="(proxy, i) in parsedNewProxies" :key="i" class="flex items-center gap-2 rounded-lg px-1 row-hover transition">
+                                <span v-if="proxy.isFake" class="flex-shrink-0 text-[9px] font-bold px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-400">INFO</span>
+                                <span v-else class="flex-shrink-0 w-1.5 h-1.5 rounded-full bg-emerald-500 shadow-sm shadow-emerald-500/30"></span>
+                                <input :value="proxy.name" @input="updateNewProxyName(i, $event.target.value)" type="text"
+                                    class="flex-1 bg-transparent border-none text-xs px-1.5 py-1.5 rounded focus:ring-1 focus:ring-primary-500/40 focus:outline-none"
+                                    :class="proxy.isFake ? 't-muted italic' : 't-secondary'">
+                            </div>
+                        </div>
+                    </div>
+                    <div v-else-if="parsedNewProxies.length === 1" class="flex items-center gap-2 text-[11px] t-muted">
+                        <i class="ph ph-arrows-left-right text-primary-400"></i>
+                        <span>Name 与代理名称双向同步中</span>
+                    </div>
+
+                    <!-- Validation warning -->
+                    <div v-if="newContentWarning"
+                        class="flex items-start gap-2 text-xs text-amber-400 bg-amber-500/10 border border-amber-500/20 rounded-xl px-3 py-2.5">
+                        <i class="ph ph-warning-circle flex-shrink-0 mt-0.5"></i>
+                        <span>{{ newContentWarning }}</span>
+                    </div>
+
                     <div>
-                        <label class="block text-xs text-gray-400 mb-1">Port</label>
-                        <input v-model.number="editMapping.port" type="number"
-                            class="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-2 text-white font-mono focus:ring-2 focus:ring-primary focus:outline-none">
+                        <label class="text-[11px] font-medium t-muted uppercase tracking-wider block mb-1.5">Type</label>
+                        <div class="grid grid-cols-5 gap-1.5">
+                            <button v-for="t in [{k:'subscription',l:'Sub'},{k:'vless',l:'VLESS/URI'},{k:'text',l:'YAML'},{k:'xray',l:'Xray'},{k:'http',l:'HTTP/S'}]"
+                                :key="t.k" @click="newSource.type = t.k"
+                                :class="newSource.type === t.k
+                                    ? 'bg-primary-500/20 text-primary-400 border-primary-500/30'
+                                    : 'surface-subtle t-muted hover:t-secondary'"
+                                class="px-2 py-2 rounded-lg text-[11px] font-semibold transition border">{{ t.l }}</button>
+                        </div>
+                    </div>
+
+                    <div>
+                        <div class="flex justify-between items-center mb-1.5">
+                            <label class="text-[11px] font-medium t-muted uppercase tracking-wider">Content</label>
+                            <button @click="loadSourceFile" class="text-[11px] text-primary-400 hover:text-primary-600 dark:hover:text-white flex items-center gap-1 transition">
+                                <i class="ph ph-folder-open text-xs"></i> Load File
+                            </button>
+                        </div>
+                        <textarea v-model="newSource.content" rows="4"
+                            class="input-field w-full rounded-xl px-4 py-2.5 t-body font-mono text-xs leading-relaxed resize-none"
+                            :placeholder="newSource.type === 'http' ? 'http://user:pass@host:port#name' : 'Paste URL or content here...'"></textarea>
+                        <div v-if="newSource.type === 'http'" class="mt-2 text-[11px] t-muted leading-relaxed">
+                            格式: <code class="code-inline px-1.5 py-0.5 rounded">http://[user:pass@]host:port#name</code>
+                        </div>
                     </div>
                 </div>
 
-                <div class="flex justify-end gap-3 pt-2">
-                    <button @click="showEditModal = false"
-                        class="px-4 py-2 rounded-lg text-gray-400 hover:bg-gray-800 transition">Cancel</button>
-                    <button @click="saveMapping"
-                        class="bg-primary hover:bg-secondary text-white px-6 py-2 rounded-lg font-medium transition shadow-lg">Save</button>
+                <div class="flex justify-end gap-2.5 pt-1">
+                    <button @click="closeAddModal" class="px-4 py-2 rounded-xl text-sm t-muted btn-ghost">Cancel</button>
+                    <button @click="addSource" class="btn-primary text-white px-5 py-2 rounded-xl text-sm font-medium">Save</button>
                 </div>
             </div>
         </div>
-        <!-- Edit Source Modal -->
-        <div v-if="showEditSourceModal"
-            class="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50">
-            <div class="bg-gray-900 rounded-2xl w-full max-w-lg p-6 border border-gray-700 shadow-2xl space-y-6">
+
+        <!-- ===== Edit Mapping Modal ===== -->
+        <div v-if="showEditModal" class="fixed inset-0 modal-backdrop flex items-center justify-center z-50 p-4">
+            <div class="modal-panel rounded-2xl w-full max-w-sm p-6 space-y-5 animate-modal">
                 <div class="flex justify-between items-center">
-                    <h3 class="text-xl font-bold">编辑 Source</h3>
-                    <button @click="showEditSourceModal = false" class="text-gray-400 hover:text-white"><i
-                            class="ph ph-x text-xl"></i></button>
+                    <h3 class="text-lg font-bold t-body">编辑端口映射</h3>
+                    <button @click="showEditModal = false" class="p-1.5 rounded-lg btn-ghost t-muted">
+                        <i class="ph ph-x text-lg"></i>
+                    </button>
+                </div>
+                <div class="space-y-3">
+                    <div>
+                        <label class="text-[10px] font-medium t-muted uppercase tracking-wider block mb-1.5">Proxy Name</label>
+                        <div class="text-sm t-body font-mono surface-subtle px-3.5 py-2.5 rounded-xl truncate">
+                            {{ editMapping.proxy_name }}
+                        </div>
+                    </div>
+                    <div>
+                        <label class="text-[10px] font-medium t-muted uppercase tracking-wider block mb-1.5">Port</label>
+                        <input v-model.number="editMapping.port" type="number"
+                            class="input-field w-full rounded-xl px-4 py-2.5 t-body font-mono text-sm">
+                    </div>
+                </div>
+                <div class="flex justify-end gap-2.5 pt-1">
+                    <button @click="showEditModal = false" class="px-4 py-2 rounded-xl text-sm t-muted btn-ghost">Cancel</button>
+                    <button @click="saveMapping" class="btn-primary text-white px-5 py-2 rounded-xl text-sm font-medium">Save</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- ===== Edit Source Modal ===== -->
+        <div v-if="showEditSourceModal" class="fixed inset-0 modal-backdrop flex items-center justify-center z-50 p-4">
+            <div class="modal-panel rounded-2xl w-full max-w-lg p-6 space-y-5 animate-modal">
+                <div class="flex justify-between items-center">
+                    <h3 class="text-lg font-bold t-body">编辑 Source</h3>
+                    <button @click="showEditSourceModal = false" class="p-1.5 rounded-lg btn-ghost t-muted">
+                        <i class="ph ph-x text-lg"></i>
+                    </button>
                 </div>
 
                 <div class="space-y-4">
                     <div>
-                        <label class="block text-sm font-medium text-gray-400 mb-1">Name</label>
+                        <label class="text-[11px] font-medium t-muted uppercase tracking-wider block mb-1.5">Name</label>
                         <input v-model="editSource.name" type="text"
-                            class="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-2 text-white focus:ring-2 focus:ring-primary focus:outline-none">
+                            class="input-field w-full rounded-xl px-4 py-2.5 text-sm t-body"
+                            :placeholder="parsedEditProxies.length === 1 ? 'Auto-synced from content' : 'Source name'">
+                    </div>
+
+                    <!-- Proxy Names (multi-proxy) -->
+                    <div v-if="parsedEditProxies.length > 1">
+                        <div class="flex justify-between items-center mb-2">
+                            <label class="text-[11px] font-medium t-muted uppercase tracking-wider">Proxy Names</label>
+                            <span class="text-[11px] t-muted">
+                                {{ parsedEditProxies.filter(p => !p.isFake).length }} proxies
+                                <span v-if="parsedEditProxies.some(p => p.isFake)" class="text-amber-500 dark:text-amber-400/70">
+                                    · {{ parsedEditProxies.filter(p => p.isFake).length }} info
+                                </span>
+                            </span>
+                        </div>
+                        <div class="max-h-44 overflow-y-auto custom-scrollbar space-y-0.5 rounded-xl surface-subtle p-2">
+                            <div v-for="(proxy, i) in parsedEditProxies" :key="i" class="flex items-center gap-2 rounded-lg px-1 row-hover transition">
+                                <span v-if="proxy.isFake" class="flex-shrink-0 text-[9px] font-bold px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-400">INFO</span>
+                                <span v-else class="flex-shrink-0 w-1.5 h-1.5 rounded-full bg-emerald-500 shadow-sm shadow-emerald-500/30"></span>
+                                <input :value="proxy.name" @input="updateEditProxyName(i, $event.target.value)" type="text"
+                                    class="flex-1 bg-transparent border-none text-xs px-1.5 py-1.5 rounded focus:ring-1 focus:ring-primary-500/40 focus:outline-none"
+                                    :class="proxy.isFake ? 't-muted italic' : 't-secondary'">
+                            </div>
+                        </div>
+                    </div>
+                    <div v-else-if="parsedEditProxies.length === 1" class="flex items-center gap-2 text-[11px] t-muted">
+                        <i class="ph ph-arrows-left-right text-primary-400"></i>
+                        <span>Name 与代理名称双向同步中</span>
+                    </div>
+
+                    <!-- Validation warning -->
+                    <div v-if="editContentWarning"
+                        class="flex items-start gap-2 text-xs text-amber-400 bg-amber-500/10 border border-amber-500/20 rounded-xl px-3 py-2.5">
+                        <i class="ph ph-warning-circle flex-shrink-0 mt-0.5"></i>
+                        <span>{{ editContentWarning }}</span>
                     </div>
 
                     <div>
-                        <label class="block text-sm font-medium text-gray-400 mb-1">Type</label>
-                        <div class="grid grid-cols-5 gap-2">
-                            <button @click="editSource.type = 'subscription'"
-                                :class="{'bg-primary text-white': editSource.type==='subscription', 'bg-gray-800 text-gray-400': editSource.type!=='subscription'}"
-                                class="px-2 py-2 rounded-lg text-xs font-medium transition">Subscription</button>
-                            <button @click="editSource.type = 'vless'"
-                                :class="{'bg-primary text-white': editSource.type==='vless', 'bg-gray-800 text-gray-400': editSource.type!=='vless'}"
-                                class="px-2 py-2 rounded-lg text-xs font-medium transition">VLESS/URI</button>
-                            <button @click="editSource.type = 'text'"
-                                :class="{'bg-primary text-white': editSource.type==='text', 'bg-gray-800 text-gray-400': editSource.type!=='text'}"
-                                class="px-2 py-2 rounded-lg text-xs font-medium transition">YAML/Text</button>
-                            <button @click="editSource.type = 'xray'"
-                                :class="{'bg-primary text-white': editSource.type==='xray', 'bg-gray-800 text-gray-400': editSource.type!=='xray'}"
-                                class="px-2 py-2 rounded-lg text-xs font-medium transition">Xray JSON</button>
-                            <button @click="editSource.type = 'http'"
-                                :class="{'bg-primary text-white': editSource.type==='http', 'bg-gray-800 text-gray-400': editSource.type!=='http'}"
-                                class="px-2 py-2 rounded-lg text-xs font-medium transition">HTTP/HTTPS</button>
+                        <label class="text-[11px] font-medium t-muted uppercase tracking-wider block mb-1.5">Type</label>
+                        <div class="grid grid-cols-5 gap-1.5">
+                            <button v-for="t in [{k:'subscription',l:'Sub'},{k:'vless',l:'VLESS/URI'},{k:'text',l:'YAML',alt:'yaml'},{k:'xray',l:'Xray'},{k:'http',l:'HTTP/S'}]"
+                                :key="t.k" @click="editSource.type = t.k"
+                                :class="(editSource.type === t.k || editSource.type === t.alt)
+                                    ? 'bg-primary-500/20 text-primary-400 border-primary-500/30'
+                                    : 'surface-subtle t-muted hover:t-secondary'"
+                                class="px-2 py-2 rounded-lg text-[11px] font-semibold transition border">{{ t.l }}</button>
                         </div>
                     </div>
 
                     <div>
-                        <div class="flex justify-between items-center mb-1">
-                            <label class="block text-sm font-medium text-gray-400">Content</label>
-                            <button @click="loadSourceFile"
-                                class="text-xs text-primary hover:text-white flex items-center gap-1">
-                                <i class="ph ph-folder-open"></i> Load File
+                        <div class="flex justify-between items-center mb-1.5">
+                            <label class="text-[11px] font-medium t-muted uppercase tracking-wider">Content</label>
+                            <button @click="loadSourceFile" class="text-[11px] text-primary-400 hover:text-primary-600 dark:hover:text-white flex items-center gap-1 transition">
+                                <i class="ph ph-folder-open text-xs"></i> Load File
                             </button>
                         </div>
                         <textarea v-model="editSource.content" rows="4"
-                            class="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-2 text-white font-mono text-xs focus:ring-2 focus:ring-primary focus:outline-none"
-                            :placeholder="editSource.type === 'http' ? 'http://user:pass@host:port?skip-cert-verify=true#name' : 'Paste URL or content here...'"></textarea>
-                        <div v-if="editSource.type === 'http'" class="mt-2 text-xs text-gray-500">
-                            <p>格式: <code class="bg-gray-800 px-1 rounded">http://[user:pass@]host:port#name</code> 或 <code class="bg-gray-800 px-1 rounded">https://[user:pass@]host:port?skip-cert-verify=true#name</code></p>
-                            <p class="mt-1">HTTPS 代理可添加 <code class="bg-gray-800 px-1 rounded">skip-cert-verify=true</code> 忽略证书问题</p>
+                            class="input-field w-full rounded-xl px-4 py-2.5 t-body font-mono text-xs leading-relaxed resize-none"
+                            :placeholder="editSource.type === 'http' ? 'http://user:pass@host:port#name' : 'Paste URL or content here...'"></textarea>
+                        <div v-if="editSource.type === 'http'" class="mt-2 text-[11px] t-muted leading-relaxed">
+                            格式: <code class="code-inline px-1.5 py-0.5 rounded">http://[user:pass@]host:port#name</code>
                         </div>
                     </div>
                 </div>
 
-                <div class="flex justify-end gap-3 pt-2">
-                    <button @click="showEditSourceModal = false"
-                        class="px-4 py-2 rounded-lg text-gray-400 hover:bg-gray-800 transition">Cancel</button>
-                    <button @click="saveSourceEdit"
-                        class="bg-primary hover:bg-secondary text-white px-6 py-2 rounded-lg font-medium transition shadow-lg">Save</button>
+                <div class="flex justify-end gap-2.5 pt-1">
+                    <button @click="showEditSourceModal = false" class="px-4 py-2 rounded-xl text-sm t-muted btn-ghost">Cancel</button>
+                    <button @click="saveSourceEdit" class="btn-primary text-white px-5 py-2 rounded-xl text-sm font-medium">Save</button>
                 </div>
             </div>
         </div>

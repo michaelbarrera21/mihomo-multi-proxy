@@ -97,6 +97,8 @@ def generate_config_file(output_path=CONFIG_OUTPUT_PATH):
             port = START_PORT
             while port in used_ports:
                 port += 1
+                if port > 65535:
+                    raise RuntimeError(f"Port range exhausted: no available port between {START_PORT} and 65535")
             used_ports.add(port)
             database.save_port_mapping(name, port)
             
@@ -144,6 +146,9 @@ def generate_config_file(output_path=CONFIG_OUTPUT_PATH):
     }
     
     # Write to file
+    output_dir = os.path.dirname(output_path)
+    if output_dir and not os.path.exists(output_dir):
+        os.makedirs(output_dir, exist_ok=True)
     with open(output_path, "w", encoding="utf-8") as f:
         yaml.dump(final_config, f, allow_unicode=True, sort_keys=False)
         

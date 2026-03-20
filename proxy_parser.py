@@ -5,6 +5,25 @@ from urllib.parse import urlparse, parse_qs, unquote
 import json
 import re
 
+# 用于过滤订阅中的假代理条目（元数据注释）
+FAKE_PROXY_KEYWORDS = [
+    '剩余流量', '剩余', '重置', '套餐到期', '距离下次', '建议',
+    '流量预警', '额度', '用量', '已用', '走失', '过期', '到期',
+    'expire', 'traffic', 'remaining', 'reset', 'subscription'
+]
+
+def is_valid_proxy_entry(entry):
+    """判断是否是有效代理条目（非元数据注释）"""
+    if not isinstance(entry, dict):
+        return False
+    name = entry.get('name', '')
+    if not name:
+        return False
+    for pattern in FAKE_PROXY_KEYWORDS:
+        if pattern in name:
+            return False
+    return True
+
 def load_subscription(url):
     try:
         resp = requests.get(url, timeout=15)
@@ -39,9 +58,9 @@ def parse_proxies_from_text(text):
 
     if not proxies:
         return []
-    
-    # Filter valid proxies
-    return [p for p in proxies if isinstance(p, dict) and p.get("name")]
+
+    # Filter valid proxies and remove fake entries (metadata comments from providers)
+    return [p for p in proxies if isinstance(p, dict) and p.get("name") and is_valid_proxy_entry(p)]
 
 def try_decode_base64_to_text(data):
     if not isinstance(data, str):
