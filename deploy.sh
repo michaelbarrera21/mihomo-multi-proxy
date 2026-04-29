@@ -3,8 +3,23 @@ set -e
 
 echo "=== Proxy Manager 部署脚本 ==="
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+APP_ROOT="/opt/proxy-manager"
+APP_DIR="$APP_ROOT/mihomo-multi-proxy"
+
+copy_app_source() {
+    mkdir -p "$APP_ROOT"
+
+    if [ "$SCRIPT_DIR" == "$APP_DIR" ]; then
+        echo "   代码已在目标目录，跳过复制"
+        return
+    fi
+
+    cp -a "$SCRIPT_DIR" "$APP_ROOT/"
+}
+
 install_requirements() {
-    cd /opt/proxy-manager
+    cd "$APP_ROOT"
 
     if [ ! -x ./venv/bin/python ]; then
         echo "   虚拟环境不存在或已损坏，正在重建..."
@@ -21,7 +36,7 @@ install_requirements() {
         ./venv/bin/python -m pip install --upgrade pip
     fi
 
-    ./venv/bin/python -m pip install -r mihomo-multi-proxy/requirements.txt
+    ./venv/bin/python -m pip install -r "$APP_DIR/requirements.txt"
 }
 
 if [ "$1" == "upgrade" ]; then
@@ -36,13 +51,7 @@ if [ "$1" == "upgrade" ]; then
     fi
     
     echo "[3/4] 更新代码..."
-    # 确保 mihomo-multi-proxy 目录存在
-    if [ -d "../mihomo-multi-proxy" ]; then
-        cp -r ../mihomo-multi-proxy /opt/proxy-manager/
-    else
-        echo "错误: 找不到 ../mihomo-multi-proxy 目录"
-        exit 1
-    fi
+    copy_app_source
     
     echo "[4/4] 更新依赖并重启..."
     install_requirements
@@ -55,21 +64,21 @@ fi
 
 # 1. 创建目录
 echo "[1/5] 创建目录..."
-mkdir -p /opt/proxy-manager
+mkdir -p "$APP_ROOT"
 
 # 2. 复制文件 (假设你已经用 scp 把 mihomo-multi-proxy 目录传到 /tmp/mihomo-multi-proxy)
 echo "[2/5] 复制文件..."
-cp -r ../mihomo-multi-proxy /opt/proxy-manager/
+copy_app_source
 
 # 3. 安装依赖 (使用虚拟环境)
 echo "[3/5] 创建虚拟环境并安装依赖..."
-cd /opt/proxy-manager
+cd "$APP_ROOT"
 python3 -m venv venv
 install_requirements --upgrade-pip
 
 # 4. 安装 systemd 服务
 echo "[4/5] 配置 systemd 服务..."
-cp /opt/proxy-manager/mihomo-multi-proxy/proxy-manager.service /etc/systemd/system/
+cp "$APP_DIR/proxy-manager.service" /etc/systemd/system/
 systemctl daemon-reload
 systemctl enable proxy-manager
 systemctl start proxy-manager
