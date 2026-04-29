@@ -315,14 +315,22 @@
                 </div>
                 <p class="text-sm t-muted ml-12">Manage proxy subscriptions and port mappings</p>
             </div>
-            <button @click="fetchData"
-                class="p-2.5 rounded-xl btn-ghost t-muted"
-                title="Refresh">
-                <i class="ph ph-arrows-clockwise text-lg"></i>
-            </button>
-            <button @click="toggleTheme" class="theme-toggle" :title="isDark ? 'Switch to Light' : 'Switch to Dark'">
-                <i :class="isDark ? 'ph ph-sun' : 'ph ph-moon'" class="text-lg"></i>
-            </button>
+            <div class="flex items-center gap-2">
+                <span v-if="currentUser" class="hidden sm:inline text-xs t-muted font-medium">{{ currentUser }}</span>
+                <button @click="fetchData"
+                    class="p-2.5 rounded-xl btn-ghost t-muted"
+                    title="Refresh">
+                    <i class="ph ph-arrows-clockwise text-lg"></i>
+                </button>
+                <button @click="toggleTheme" class="theme-toggle" :title="isDark ? 'Switch to Light' : 'Switch to Dark'">
+                    <i :class="isDark ? 'ph ph-sun' : 'ph ph-moon'" class="text-lg"></i>
+                </button>
+                <button @click="logout"
+                    class="p-2.5 rounded-xl btn-ghost t-muted"
+                    title="Sign out">
+                    <i class="ph ph-sign-out text-lg"></i>
+                </button>
+            </div>
         </header>
 
         <!-- Main Grid -->

@@ -1,11 +1,13 @@
-from fastapi import FastAPI, HTTPException, UploadFile, File
+from fastapi import FastAPI, HTTPException, UploadFile, File, Request, Response
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from pydantic import BaseModel
 from typing import Optional, List
 import os
+from urllib.parse import quote
 from . import database
 from . import config_generator
+from . import auth
 
 # Initialize App
 app = FastAPI(title="Proxy Manager")
@@ -111,7 +113,86 @@ class ProtonFetchRequest(BaseModel):
     api_base_url: Optional[str] = None
     dedupe_endpoints: Optional[bool] = None
 
+class LoginRequest(BaseModel):
+    username: str
+    password: str
+
+
+def _login_redirect_url(request: Request) -> str:
+    path = request.url.path
+    if request.url.query:
+        path += "?" + request.url.query
+    return "/login?next=" + quote(path, safe="")
+
+
+def _safe_next_url(value: Optional[str]) -> str:
+    if not value or not value.startswith("/") or value.startswith("//"):
+        return "/"
+    return value
+
+
+def _is_public_path(path: str) -> bool:
+    return path == "/login" or path.startswith("/api/auth/")
+
+
+@app.on_event("startup")
+def log_auth_config():
+    auth.log_startup_warnings()
+
+
+@app.middleware("http")
+async def require_login(request: Request, call_next):
+    if not auth.auth_enabled() or _is_public_path(request.url.path):
+        return await call_next(request)
+
+    if auth.current_username(request):
+        return await call_next(request)
+
+    if request.url.path.startswith("/api/"):
+        return JSONResponse({"detail": "Authentication required"}, status_code=401)
+
+    return RedirectResponse(_login_redirect_url(request), status_code=303)
+
+
 # Routes
+@app.get("/login")
+def login_page(request: Request):
+    if auth.current_username(request):
+        return RedirectResponse(_safe_next_url(request.query_params.get("next")), status_code=303)
+
+    static_dir = os.path.join(os.path.dirname(__file__), "static")
+    return FileResponse(os.path.join(static_dir, "login.html"))
+
+
+@app.get("/api/auth/status")
+def auth_status(request: Request):
+    username = auth.current_username(request)
+    return {
+        "enabled": auth.auth_enabled(),
+        "authenticated": bool(username),
+        "username": username,
+        "using_default_password": auth.using_default_password(),
+    }
+
+
+@app.post("/api/auth/login")
+def login(req: LoginRequest, response: Response):
+    if not auth.auth_enabled():
+        return {"status": "success", "username": auth.configured_username()}
+
+    if not auth.verify_credentials(req.username, req.password):
+        raise HTTPException(status_code=401, detail="Invalid username or password")
+
+    auth.set_session_cookie(response, auth.configured_username())
+    return {"status": "success", "username": auth.configured_username()}
+
+
+@app.post("/api/auth/logout")
+def logout(response: Response):
+    auth.clear_session_cookie(response)
+    return {"status": "success"}
+
+
 @app.get("/api/sources")
 def get_sources():
     return [_summarize_source_content(source) for source in database.get_all_sources()]

@@ -165,6 +165,21 @@ sudo systemctl start proxy-manager
 ### 4. 访问与配置
 
 *   **访问地址**: `http://<服务器IP>:8080` (默认端口，可在 server 文件中修改)
+*   **登录账号**: 默认 `admin` / `admin`。建议部署后立即通过 systemd 环境变量修改密码：
+
+```ini
+Environment=PROXY_MANAGER_USERNAME=admin
+Environment=PROXY_MANAGER_PASSWORD=change-this-password
+Environment=PROXY_MANAGER_SESSION_SECRET=change-this-random-secret
+```
+
+修改 `/etc/systemd/system/proxy-manager.service` 后执行：
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl restart proxy-manager
+```
+
 *   **配置输出路径**: 在网页控制台右侧，填写你的 mihomo 配置文件路径，例如 `/etc/mihomo/config.yaml`。
 *   **重启服务权限**: 
     *   服务默认以 ROOT 运行以获取写入配置和重启服务的权限。

@@ -1,5 +1,17 @@
 const { createApp, ref, onMounted, watch, nextTick, computed } = Vue;
 
+const nativeFetch = window.fetch.bind(window);
+window.fetch = async (...args) => {
+    const response = await nativeFetch(...args);
+    const target = args[0];
+    const url = typeof target === 'string' ? target : (target && target.url) || '';
+    if (response.status === 401 && url.startsWith('/api/') && !url.startsWith('/api/auth/')) {
+        const next = encodeURIComponent(window.location.pathname + window.location.search);
+        window.location.href = `/login?next=${next}`;
+    }
+    return response;
+};
+
 // ===== Proxy Name Parsing Helpers =====
 
 const FAKE_PROXY_KEYWORDS = [
@@ -454,6 +466,7 @@ createApp({
         const sources = ref([]);
         const mappings = ref([]);
         const duplicates = ref([]);
+        const currentUser = ref('');
 
         const showAddModal = ref(false);
         const newSource = ref({
@@ -697,6 +710,23 @@ createApp({
                 duplicates.value = d;
             } catch (e) {
                 console.error(e);
+            }
+        };
+
+        const loadAuthStatus = async () => {
+            try {
+                const data = await fetch('/api/auth/status').then(r => r.json());
+                currentUser.value = data.username || '';
+            } catch (e) {
+                console.error(e);
+            }
+        };
+
+        const logout = async () => {
+            try {
+                await fetch('/api/auth/logout', { method: 'POST' });
+            } finally {
+                window.location.href = '/login';
             }
         };
 
@@ -1024,12 +1054,15 @@ createApp({
         };
 
         onMounted(() => {
+            loadAuthStatus();
             fetchData();
         });
 
         return {
             isDark,
             toggleTheme,
+            currentUser,
+            logout,
             sources,
             mappings,
             duplicates,

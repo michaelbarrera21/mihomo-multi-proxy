@@ -10,6 +10,9 @@ ExecStart=/opt/proxy-manager/venv/bin/python -m uvicorn mihomo-multi-proxy.main:
 Restart=always
 RestartSec=5
 Environment=PYTHONUNBUFFERED=1
+Environment=PROXY_MANAGER_AUTH_ENABLED=true
+Environment=PROXY_MANAGER_USERNAME=admin
+Environment=PROXY_MANAGER_PASSWORD=admin
 
 [Install]
 WantedBy=multi-user.target
