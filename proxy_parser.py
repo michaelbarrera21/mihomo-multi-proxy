@@ -426,6 +426,167 @@ def parse_http_uri(uri):
         print(f"HTTP/HTTPS parse error: {e}")
         return None
 
+def _parse_wireguard_sections(content):
+    sections = []
+    current = None
+
+    for raw_line in content.splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#") or line.startswith(";"):
+            continue
+
+        if line.startswith("[") and line.endswith("]"):
+            current = {"name": line[1:-1].strip(), "values": {}}
+            sections.append(current)
+            continue
+
+        if current and "=" in line:
+            key, value = line.split("=", 1)
+            current["values"][key.strip().lower()] = value.strip()
+
+    return sections
+
+def _split_csv(value):
+    if not value:
+        return []
+    return [part.strip() for part in value.split(",") if part.strip()]
+
+def _strip_cidr(value):
+    if not value:
+        return value
+    return value.split("/", 1)[0].strip()
+
+def _split_endpoint(endpoint):
+    endpoint = (endpoint or "").strip()
+    if not endpoint:
+        return None, None
+
+    if endpoint.startswith("[") and "]:" in endpoint:
+        host, port_s = endpoint[1:].split("]:", 1)
+    elif ":" in endpoint:
+        host, port_s = endpoint.rsplit(":", 1)
+    else:
+        return endpoint, 51820
+
+    try:
+        return host.strip(), int(port_s.strip())
+    except ValueError:
+        return host.strip(), 51820
+
+def parse_wireguard_config(content, default_name="WireGuard"):
+    """
+    Parse a WireGuard .conf file into Mihomo wireguard proxies.
+    A config can contain one Interface and one or more Peer sections.
+    """
+    sections = _parse_wireguard_sections(content)
+    interface = next((s["values"] for s in sections if s["name"].lower() == "interface"), None)
+    peers = [s["values"] for s in sections if s["name"].lower() == "peer"]
+
+    if not interface or not peers:
+        return []
+
+    private_key = interface.get("privatekey")
+    if not private_key:
+        return []
+
+    addresses = _split_csv(interface.get("address"))
+    dns = _split_csv(interface.get("dns"))
+    mtu = interface.get("mtu")
+
+    proxies = []
+    for index, peer in enumerate(peers, start=1):
+        server, port = _split_endpoint(peer.get("endpoint"))
+        public_key = peer.get("publickey")
+        if not server or not public_key:
+            continue
+
+        name = default_name
+        if len(peers) > 1:
+            name = f"{default_name} #{index}"
+
+        proxy = {
+            "name": name,
+            "type": "wireguard",
+            "server": server,
+            "port": port,
+            "private-key": private_key,
+            "public-key": public_key,
+            "udp": True,
+        }
+
+        ipv4 = next((addr for addr in addresses if ":" not in addr), None)
+        ipv6 = next((addr for addr in addresses if ":" in addr), None)
+        if ipv4:
+            proxy["ip"] = _strip_cidr(ipv4)
+        if ipv6:
+            proxy["ipv6"] = _strip_cidr(ipv6)
+
+        allowed_ips = _split_csv(peer.get("allowedips"))
+        if allowed_ips:
+            proxy["allowed-ips"] = allowed_ips
+        if dns:
+            proxy["dns"] = dns
+            proxy["remote-dns-resolve"] = True
+        if mtu:
+            try:
+                proxy["mtu"] = int(mtu)
+            except ValueError:
+                proxy["mtu"] = mtu
+
+        preshared_key = peer.get("presharedkey")
+        if preshared_key:
+            proxy["pre-shared-key"] = preshared_key
+
+        keepalive = peer.get("persistentkeepalive")
+        if keepalive:
+            try:
+                proxy["persistent-keepalive"] = int(keepalive)
+            except ValueError:
+                proxy["persistent-keepalive"] = keepalive
+
+        reserved = peer.get("reserved")
+        if reserved:
+            try:
+                proxy["reserved"] = [int(v) for v in _split_csv(reserved)]
+            except ValueError:
+                pass
+
+        proxies.append(proxy)
+
+    return proxies
+
+def parse_wireguard_source(content, source_name="WireGuard"):
+    content = (content or "").strip()
+    if not content:
+        return []
+
+    try:
+        data = yaml.safe_load(content)
+    except Exception:
+        data = None
+
+    configs = []
+    if isinstance(data, dict) and isinstance(data.get("wireguard_configs"), list):
+        configs = data["wireguard_configs"]
+    elif isinstance(data, list):
+        configs = data
+
+    if configs:
+        proxies = []
+        for index, item in enumerate(configs, start=1):
+            if isinstance(item, str):
+                conf_text = item
+                name = f"{source_name} #{index}" if len(configs) > 1 else source_name
+            elif isinstance(item, dict):
+                conf_text = item.get("config") or item.get("content") or ""
+                name = item.get("name") or f"{source_name} #{index}"
+            else:
+                continue
+            proxies.extend(parse_wireguard_config(conf_text, name))
+        return proxies
+
+    return parse_wireguard_config(content, source_name)
+
 def extract_mappings_from_config(config_text):
     """
     Parses a full config.yaml text and extracts port mappings based on listeners

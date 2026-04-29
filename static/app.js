@@ -8,6 +8,179 @@ const FAKE_PROXY_KEYWORDS = [
     'expire', 'traffic', 'remaining', 'reset', 'subscription'
 ];
 
+const SOURCE_TYPES = [
+    { k: 'subscription', l: 'Sub' },
+    { k: 'vless', l: 'URI' },
+    { k: 'text', l: 'YAML' },
+    { k: 'wireguard', l: 'WG' },
+    { k: 'protonvpn', l: 'Proton' },
+    { k: 'xray', l: 'Xray' },
+    { k: 'http', l: 'HTTP/S' }
+];
+
+const LARGE_PREVIEW_SELECT_ALL_LIMIT = 1000;
+const PREVIEW_PAGE_SIZE = 200;
+
+function defaultSelection() {
+    return { mode: 'all', node_keys: [] };
+}
+
+function cloneSelection(selection) {
+    if (!selection || typeof selection !== 'object') return defaultSelection();
+    const mode = ['all', 'include', 'exclude'].includes(selection.mode) ? selection.mode : 'all';
+    const nodeKeys = Array.isArray(selection.node_keys) ? selection.node_keys.map(String) : [];
+    return { mode, node_keys: nodeKeys };
+}
+
+function selectedCount(nodes) {
+    return nodes.filter(n => n.selected).length;
+}
+
+function selectionSummary(nodes) {
+    if (!nodes.length) return '';
+    const count = selectedCount(nodes);
+    const logicalTotal = nodes.reduce((sum, node) => {
+        const logicalCount = Number((node.metadata || {}).logical_count || 1);
+        return sum + Math.max(logicalCount || 1, 1);
+    }, 0);
+    const unit = logicalTotal > nodes.length ? 'endpoints' : '节点';
+    const suffix = logicalTotal > nodes.length ? ` · 合并自 ${logicalTotal} 个 Proton 逻辑节点` : '';
+    return count === nodes.length
+        ? `将导入全部 ${nodes.length} 个 ${unit}${suffix}`
+        : `将导入 ${count}/${nodes.length} 个 ${unit}${suffix}`;
+}
+
+function filterPreviewNodes(nodes, query) {
+    const q = (query || '').trim().toLowerCase();
+    if (!q) return nodes;
+
+    return nodes.filter(node => {
+        const metadata = node.metadata || {};
+        return [
+            node.name,
+            node.server,
+            node.type,
+            metadata.exit_country,
+            metadata.entry_country,
+            metadata.city,
+            metadata.state,
+            metadata.domain,
+            metadata.server_name,
+            Array.isArray(metadata.features) ? metadata.features.join(' ') : ''
+        ].some(value => String(value || '').toLowerCase().includes(q));
+    });
+}
+
+function previewTotalPages(nodes) {
+    return Math.max(1, Math.ceil(nodes.length / PREVIEW_PAGE_SIZE));
+}
+
+function previewPageItems(nodes, page) {
+    const safePage = Math.min(Math.max(Number(page) || 1, 1), previewTotalPages(nodes));
+    const start = (safePage - 1) * PREVIEW_PAGE_SIZE;
+    return nodes.slice(start, start + PREVIEW_PAGE_SIZE);
+}
+
+function previewRangeText(nodes, page) {
+    if (!nodes.length) return '0/0';
+    const safePage = Math.min(Math.max(Number(page) || 1, 1), previewTotalPages(nodes));
+    const start = (safePage - 1) * PREVIEW_PAGE_SIZE + 1;
+    const end = Math.min(start + PREVIEW_PAGE_SIZE - 1, nodes.length);
+    return `${start}-${end}/${nodes.length}`;
+}
+
+function contentSizeLabel(content) {
+    const bytes = new Blob([content || '']).size;
+    if (bytes >= 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(2)} MB`;
+    if (bytes >= 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${bytes} B`;
+}
+
+function protonContentSummary(content) {
+    if (new Blob([content || '']).size > 5 * 1024 * 1024) {
+        return `Proton cache · ${contentSizeLabel(content)}`;
+    }
+
+    try {
+        const data = JSON.parse(content || '{}');
+        if (data && data.format === 'protonvpn.compact.v1') {
+            const count = Array.isArray(data.servers) ? data.servers.length : 0;
+            const stats = data.stats || {};
+            const raw = Number(stats.raw_servers || 0);
+            const unique = Number(stats.unique_endpoints || count);
+            const auth = data.auth && data.auth.refresh_token ? ' · saved session' : '';
+            if (raw && raw !== unique) {
+                return `Proton compact cache · ${unique} endpoints · ${raw} logical nodes · ${contentSizeLabel(content)}${auth}`;
+            }
+            return `Proton compact cache · ${count} nodes · ${contentSizeLabel(content)}${auth}`;
+        }
+        if (data && Array.isArray(data.wireguard_configs)) {
+            const auth = data.auth && data.auth.refresh_token ? ' · saved session' : '';
+            return `Proton WireGuard cache · ${data.wireguard_configs.length} nodes · ${contentSizeLabel(content)}${auth}`;
+        }
+    } catch {}
+    return `Proton content · ${contentSizeLabel(content)}`;
+}
+
+const storedProtonAuthCache = { content: null, result: false };
+
+function hasStoredProtonAuth(content) {
+    const value = content || '';
+    if (storedProtonAuthCache.content === value) return storedProtonAuthCache.result;
+
+    const head = value.slice(0, 12000);
+    let result = head.includes('"protonvpn.compact.v1"')
+        && head.includes('"auth"')
+        && head.includes('"refresh_token"');
+
+    if (!result && new Blob([value]).size <= 1024 * 1024) {
+        try {
+            const data = JSON.parse(value || '{}');
+            result = !!(data && data.auth && data.auth.uid && data.auth.refresh_token);
+        } catch {}
+    }
+
+    storedProtonAuthCache.content = value;
+    storedProtonAuthCache.result = result;
+    return result;
+}
+
+function protonKeepsDuplicates(content) {
+    const value = content || '';
+    if (value.slice(0, 20000).includes('"dedupe_endpoints":false')) return true;
+    if (new Blob([value]).size > 1024 * 1024) return false;
+    try {
+        const data = JSON.parse(value || '{}');
+        return data && data.filters && data.filters.dedupe_endpoints === false;
+    } catch {}
+    return false;
+}
+
+function defaultProtonCredentials() {
+    return {
+        auth_mode: 'password',
+        username: '',
+        password: '',
+        twofa_code: '',
+        auth_uid: '',
+        auth_token: '',
+        access_token: '',
+        session_id: '',
+        cookie_header: '',
+        app_version: '',
+        keep_duplicates: false
+    };
+}
+
+function canFetchProton(credentials, source) {
+    const c = credentials || {};
+    const hasStoredAuth = hasStoredProtonAuth(source && source.content);
+    if (c.auth_mode === 'session') {
+        return !!(c.cookie_header || c.access_token || (c.auth_uid && c.auth_token) || hasStoredAuth);
+    }
+    return !!(c.username && c.password) || hasStoredAuth;
+}
+
 function isFakeProxy(name) {
     if (!name) return false;
     const lower = name.toLowerCase();
@@ -76,7 +249,7 @@ function parseXrayProxies(content) {
 
 function parseContentProxies(content, type) {
     if (!content || !content.trim()) return [];
-    if (type === 'subscription') return [];
+    if (type === 'subscription' || type === 'protonvpn') return [];
     const v = content.trim();
 
     if (type === 'vless' || type === 'http') {
@@ -110,6 +283,10 @@ function parseContentProxies(content, type) {
     }
     if (type === 'xray') {
         return parseXrayProxies(v);
+    }
+    if (type === 'wireguard') {
+        const endpoint = (v.match(/Endpoint\s*=\s*([^\r\n]+)/i) || [])[1] || '';
+        return [{ name: endpoint ? `WireGuard ${endpoint.trim()}` : 'WireGuard', index: 0, isFake: false }];
     }
     return [];
 }
@@ -254,6 +431,7 @@ function autoDetectType(val, currentType) {
     }
     if (v.startsWith('http://') || v.startsWith('https://')) return 'subscription';
     if (v.startsWith('vless://') || v.startsWith('ss://') || v.startsWith('trojan://') || v.startsWith('hysteria2://') || v.startsWith('vmess://')) return 'vless';
+    if (v.includes('[Interface]') && v.includes('[Peer]')) return 'wireguard';
     if (v.includes('proxies:') || v.startsWith('proxies:')) return 'text';
     if (v.startsWith('{') && v.includes('"outbounds"')) return 'xray';
     return currentType;
@@ -281,9 +459,18 @@ createApp({
         const newSource = ref({
             name: '',
             type: 'subscription',
-            content: ''
+            content: '',
+            selection: defaultSelection()
         });
         const parsedNewProxies = ref([]);
+        const previewNewNodes = ref([]);
+        const newPreviewFilter = ref('');
+        const newPreviewPage = ref(1);
+        const isPreviewingNew = ref(false);
+        const newPreviewError = ref('');
+        const newProtonCredentials = ref(defaultProtonCredentials());
+        const isFetchingNewProton = ref(false);
+        const newProtonError = ref('');
         let _addSyncLock = false;
 
         const restartService = ref(false);
@@ -309,6 +496,11 @@ createApp({
             // Parse proxies
             const proxies = parseContentProxies(val, newSource.value.type);
             parsedNewProxies.value = proxies;
+            newSource.value.selection = defaultSelection();
+            previewNewNodes.value = [];
+            newPreviewFilter.value = '';
+            newPreviewPage.value = 1;
+            newPreviewError.value = '';
 
             // Single proxy: sync name from content
             if (proxies.length === 1 && proxies[0].name) {
@@ -335,6 +527,11 @@ createApp({
             if (_addSyncLock) return;
             _addSyncLock = true;
             parsedNewProxies.value = parseContentProxies(newSource.value.content, newSource.value.type);
+            newSource.value.selection = defaultSelection();
+            previewNewNodes.value = [];
+            newPreviewFilter.value = '';
+            newPreviewPage.value = 1;
+            newPreviewError.value = '';
             _addSyncLock = false;
         }, { flush: 'sync' });
 
@@ -355,11 +552,138 @@ createApp({
             _addSyncLock = false;
         };
 
+        const syncSelectionFromPreview = (sourceRef, nodes) => {
+            const selectedKeys = nodes.filter(n => n.selected).map(n => n.node_key);
+            sourceRef.value.selection = selectedKeys.length === nodes.length
+                ? defaultSelection()
+                : { mode: 'include', node_keys: selectedKeys };
+        };
+
+        const previewSourceNodes = async (sourceRef, nodesRef, loadingRef, errorRef) => {
+            loadingRef.value = true;
+            errorRef.value = '';
+            try {
+                const res = await fetch('/api/sources/preview', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        name: sourceRef.value.name,
+                        type: sourceRef.value.type,
+                        content: sourceRef.value.content,
+                        selection: sourceRef.value.selection
+                    })
+                });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.detail || 'Preview failed');
+                nodesRef.value = data.nodes || [];
+                if (nodesRef === previewNewNodes) {
+                    newPreviewPage.value = 1;
+                } else if (nodesRef === previewEditNodes) {
+                    editPreviewPage.value = 1;
+                }
+                syncSelectionFromPreview(sourceRef, nodesRef.value);
+            } catch (e) {
+                nodesRef.value = [];
+                errorRef.value = e.message || String(e);
+            } finally {
+                loadingRef.value = false;
+            }
+        };
+
+        const previewNewSource = () => previewSourceNodes(newSource, previewNewNodes, isPreviewingNew, newPreviewError);
+
+        const togglePreviewNode = (sourceRef, nodesRef, node) => {
+            node.selected = !node.selected;
+            syncSelectionFromPreview(sourceRef, nodesRef.value);
+        };
+
+        const selectAllPreviewNodes = (sourceRef, nodesRef, selected) => {
+            nodesRef.value.forEach(node => { node.selected = selected; });
+            syncSelectionFromPreview(sourceRef, nodesRef.value);
+        };
+
+        const selectFilteredPreviewNodes = (sourceRef, nodesRef, filteredNodes, selected) => {
+            const keys = new Set(filteredNodes.map(node => node.node_key));
+            nodesRef.value.forEach(node => {
+                if (keys.has(node.node_key)) node.selected = selected;
+            });
+            syncSelectionFromPreview(sourceRef, nodesRef.value);
+        };
+
+        const toggleNewPreviewNode = (node) => togglePreviewNode(newSource, previewNewNodes, node);
+        const selectAllNewPreviewNodes = (selected) => selectAllPreviewNodes(newSource, previewNewNodes, selected);
+        const selectFilteredNewPreviewNodes = (selected) =>
+            selectFilteredPreviewNodes(newSource, previewNewNodes, newPreviewFilteredNodes.value, selected);
+
+        const fetchProtonNodes = async (sourceRef, credentialsRef, nodesRef, loadingRef, errorRef) => {
+            loadingRef.value = true;
+            errorRef.value = '';
+            try {
+                const body = {
+                    username: credentialsRef.value.username,
+                    password: credentialsRef.value.password,
+                    twofa_code: credentialsRef.value.twofa_code || null,
+                    name: sourceRef.value.name || 'ProtonVPN',
+                    existing_content: sourceRef.value.content || null,
+                    auth_uid: credentialsRef.value.auth_uid || null,
+                    auth_token: credentialsRef.value.auth_token || null,
+                    access_token: credentialsRef.value.access_token || null,
+                    session_id: credentialsRef.value.session_id || null,
+                    cookie_header: credentialsRef.value.cookie_header || null,
+                    app_version: credentialsRef.value.app_version || null,
+                    dedupe_endpoints: !credentialsRef.value.keep_duplicates
+                };
+                const res = await fetch('/api/protonvpn/fetch', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(body)
+                });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.detail || 'ProtonVPN fetch failed');
+                sourceRef.value.type = 'protonvpn';
+                sourceRef.value.content = data.content;
+                if (!sourceRef.value.name) sourceRef.value.name = 'ProtonVPN';
+                const fetchedNodes = data.nodes || [];
+                const selectAllByDefault = fetchedNodes.length <= LARGE_PREVIEW_SELECT_ALL_LIMIT;
+                fetchedNodes.forEach(node => { node.selected = selectAllByDefault && node.selected !== false; });
+                nodesRef.value = fetchedNodes;
+                if (nodesRef === previewNewNodes) {
+                    newPreviewFilter.value = '';
+                    newPreviewPage.value = 1;
+                } else if (nodesRef === previewEditNodes) {
+                    editPreviewFilter.value = '';
+                    editPreviewPage.value = 1;
+                }
+                syncSelectionFromPreview(sourceRef, nodesRef.value);
+                credentialsRef.value.password = '';
+                credentialsRef.value.twofa_code = '';
+                credentialsRef.value.auth_token = '';
+                credentialsRef.value.access_token = '';
+                credentialsRef.value.session_id = '';
+                credentialsRef.value.cookie_header = '';
+            } catch (e) {
+                nodesRef.value = [];
+                errorRef.value = e.message || String(e);
+            } finally {
+                loadingRef.value = false;
+            }
+        };
+
+        const fetchNewProton = () => fetchProtonNodes(
+            newSource, newProtonCredentials, previewNewNodes, isFetchingNewProton, newProtonError
+        );
+
         const closeAddModal = () => {
             showAddModal.value = false;
             _addSyncLock = true;
-            newSource.value = { name: '', type: 'subscription', content: '' };
+            newSource.value = { name: '', type: 'subscription', content: '', selection: defaultSelection() };
+            newProtonCredentials.value = defaultProtonCredentials();
             parsedNewProxies.value = [];
+            previewNewNodes.value = [];
+            newPreviewFilter.value = '';
+            newPreviewPage.value = 1;
+            newPreviewError.value = '';
+            newProtonError.value = '';
             _addSyncLock = false;
         };
 
@@ -386,8 +710,14 @@ createApp({
                 });
                 showAddModal.value = false;
                 _addSyncLock = true;
-                newSource.value = { name: '', type: 'subscription', content: '' };
+                newSource.value = { name: '', type: 'subscription', content: '', selection: defaultSelection() };
+                newProtonCredentials.value = defaultProtonCredentials();
                 parsedNewProxies.value = [];
+                previewNewNodes.value = [];
+                newPreviewFilter.value = '';
+                newPreviewPage.value = 1;
+                newPreviewError.value = '';
+                newProtonError.value = '';
                 _addSyncLock = false;
                 await fetchData();
             } catch (e) {
@@ -531,19 +861,64 @@ createApp({
 
         // Edit Source
         const showEditSourceModal = ref(false);
-        const editSource = ref({ id: null, name: '', type: '', content: '' });
+        const editSource = ref({ id: null, name: '', type: '', content: '', selection: defaultSelection() });
         const parsedEditProxies = ref([]);
+        const previewEditNodes = ref([]);
+        const editPreviewFilter = ref('');
+        const editPreviewPage = ref(1);
+        const isPreviewingEdit = ref(false);
+        const editPreviewError = ref('');
+        const editProtonCredentials = ref(defaultProtonCredentials());
+        const isFetchingEditProton = ref(false);
+        const editProtonError = ref('');
         let _editSyncLock = false;
 
+        const newPreviewFilteredNodes = computed(() =>
+            filterPreviewNodes(previewNewNodes.value, newPreviewFilter.value)
+        );
+        const newPreviewVisibleNodes = computed(() =>
+            previewPageItems(newPreviewFilteredNodes.value, newPreviewPage.value)
+        );
+        const newPreviewTotalPages = computed(() =>
+            previewTotalPages(newPreviewFilteredNodes.value)
+        );
+        const newPreviewRangeText = computed(() =>
+            previewRangeText(newPreviewFilteredNodes.value, newPreviewPage.value)
+        );
+        const editPreviewFilteredNodes = computed(() =>
+            filterPreviewNodes(previewEditNodes.value, editPreviewFilter.value)
+        );
+        const editPreviewVisibleNodes = computed(() =>
+            previewPageItems(editPreviewFilteredNodes.value, editPreviewPage.value)
+        );
+        const editPreviewTotalPages = computed(() =>
+            previewTotalPages(editPreviewFilteredNodes.value)
+        );
+        const editPreviewRangeText = computed(() =>
+            previewRangeText(editPreviewFilteredNodes.value, editPreviewPage.value)
+        );
+
+        watch(newPreviewFilter, () => { newPreviewPage.value = 1; });
+        watch(editPreviewFilter, () => { editPreviewPage.value = 1; });
+
         const openEditSourceModal = async (source) => {
+            const fullSource = await fetch(`/api/sources/${source.id}`).then(r => r.json());
             _editSyncLock = true;
             editSource.value = { 
-                id: source.id, 
-                name: source.name, 
-                type: source.type, 
-                content: source.content 
+                id: fullSource.id,
+                name: fullSource.name,
+                type: fullSource.type,
+                content: fullSource.content,
+                selection: cloneSelection(fullSource.selection)
             };
-            parsedEditProxies.value = parseContentProxies(source.content, source.type);
+            parsedEditProxies.value = parseContentProxies(fullSource.content, fullSource.type);
+            previewEditNodes.value = [];
+            editPreviewFilter.value = '';
+            editPreviewPage.value = 1;
+            editPreviewError.value = '';
+            editProtonError.value = '';
+            editProtonCredentials.value = defaultProtonCredentials();
+            editProtonCredentials.value.keep_duplicates = protonKeepsDuplicates(fullSource.content);
             _editSyncLock = false;
             showEditSourceModal.value = true;
         };
@@ -554,6 +929,11 @@ createApp({
             _editSyncLock = true;
             const proxies = parseContentProxies(val, editSource.value.type);
             parsedEditProxies.value = proxies;
+            editSource.value.selection = defaultSelection();
+            previewEditNodes.value = [];
+            editPreviewFilter.value = '';
+            editPreviewPage.value = 1;
+            editPreviewError.value = '';
             if (proxies.length === 1 && proxies[0].name) {
                 editSource.value.name = proxies[0].name;
             }
@@ -577,6 +957,11 @@ createApp({
             if (_editSyncLock) return;
             _editSyncLock = true;
             parsedEditProxies.value = parseContentProxies(editSource.value.content, editSource.value.type);
+            editSource.value.selection = defaultSelection();
+            previewEditNodes.value = [];
+            editPreviewFilter.value = '';
+            editPreviewPage.value = 1;
+            editPreviewError.value = '';
             _editSyncLock = false;
         }, { flush: 'sync' });
 
@@ -597,6 +982,15 @@ createApp({
             _editSyncLock = false;
         };
 
+        const previewEditSource = () => previewSourceNodes(editSource, previewEditNodes, isPreviewingEdit, editPreviewError);
+        const toggleEditPreviewNode = (node) => togglePreviewNode(editSource, previewEditNodes, node);
+        const selectAllEditPreviewNodes = (selected) => selectAllPreviewNodes(editSource, previewEditNodes, selected);
+        const selectFilteredEditPreviewNodes = (selected) =>
+            selectFilteredPreviewNodes(editSource, previewEditNodes, editPreviewFilteredNodes.value, selected);
+        const fetchEditProton = () => fetchProtonNodes(
+            editSource, editProtonCredentials, previewEditNodes, isFetchingEditProton, editProtonError
+        );
+
         const saveSourceEdit = async () => {
             if (!editSource.value.name || !editSource.value.content) return;
             try {
@@ -606,7 +1000,8 @@ createApp({
                     body: JSON.stringify({
                         name: editSource.value.name,
                         type: editSource.value.type,
-                        content: editSource.value.content
+                        content: editSource.value.content,
+                        selection: editSource.value.selection
                     })
                 });
                 showEditSourceModal.value = false;
@@ -617,8 +1012,15 @@ createApp({
         };
 
         const formatContent = (c) => {
+            if (!c) return '';
+            if (c.trim().startsWith('{') && c.includes('"password"')) return c.replace(/"password"\s*:\s*"[^"]*"/g, '"password":"***"').substring(0, 50) + '...';
             if (c.startsWith('http')) return c;
             return c.substring(0, 50) + (c.length > 50 ? '...' : '');
+        };
+
+        const formatSourceContent = (source) => {
+            if (source.content_preview) return source.content_preview;
+            return formatContent(source.content || '');
         };
 
         onMounted(() => {
@@ -633,7 +1035,28 @@ createApp({
             duplicates,
             showAddModal,
             newSource,
+            SOURCE_TYPES,
             parsedNewProxies,
+            previewNewNodes,
+            newPreviewFilter,
+            newPreviewPage,
+            newPreviewFilteredNodes,
+            newPreviewVisibleNodes,
+            newPreviewTotalPages,
+            newPreviewRangeText,
+            isPreviewingNew,
+            newPreviewError,
+            newProtonCredentials,
+            isFetchingNewProton,
+            newProtonError,
+            canFetchProton,
+            fetchNewProton,
+            previewNewSource,
+            selectedCount,
+            selectionSummary,
+            toggleNewPreviewNode,
+            selectAllNewPreviewNodes,
+            selectFilteredNewPreviewNodes,
             updateNewProxyName,
             closeAddModal,
             restartService,
@@ -646,6 +1069,23 @@ createApp({
             showEditSourceModal,
             editSource,
             parsedEditProxies,
+            previewEditNodes,
+            editPreviewFilter,
+            editPreviewPage,
+            editPreviewFilteredNodes,
+            editPreviewVisibleNodes,
+            editPreviewTotalPages,
+            editPreviewRangeText,
+            isPreviewingEdit,
+            editPreviewError,
+            editProtonCredentials,
+            isFetchingEditProton,
+            editProtonError,
+            previewEditSource,
+            toggleEditPreviewNode,
+            selectAllEditPreviewNodes,
+            selectFilteredEditPreviewNodes,
+            fetchEditProton,
             updateEditProxyName,
             fetchData,
             addSource,
@@ -658,6 +1098,8 @@ createApp({
             saveSourceEdit,
             generateConfig,
             formatContent,
+            formatSourceContent,
+            protonContentSummary,
             uploadMappings,
             sourceFileInput,
             loadSourceFile,

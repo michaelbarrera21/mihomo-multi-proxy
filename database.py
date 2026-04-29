@@ -1,8 +1,10 @@
 import sqlite3
 import os
+import json
 from datetime import datetime
 
 DB_PATH = "data.db"
+DEFAULT_SELECTION = {"mode": "all", "node_keys": []}
 
 def get_db_connection():
     conn = sqlite3.connect(DB_PATH)
@@ -24,6 +26,19 @@ def init_db():
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     ''')
+
+    existing_source_columns = {
+        row["name"] for row in conn.execute("PRAGMA table_info(sources)").fetchall()
+    }
+    source_migrations = {
+        "selection_json": "TEXT",
+        "cache_json": "TEXT",
+        "last_refresh_at": "TIMESTAMP",
+        "last_error": "TEXT",
+    }
+    for column, column_type in source_migrations.items():
+        if column not in existing_source_columns:
+            c.execute(f"ALTER TABLE sources ADD COLUMN {column} {column_type}")
     
     # Port mappings table
     c.execute('''
@@ -37,16 +52,52 @@ def init_db():
     conn.commit()
     conn.close()
 
+def normalize_selection(selection):
+    if not isinstance(selection, dict):
+        return dict(DEFAULT_SELECTION)
+
+    mode = selection.get("mode", "all")
+    if mode not in ("all", "include", "exclude"):
+        mode = "all"
+
+    node_keys = selection.get("node_keys") or []
+    if not isinstance(node_keys, list):
+        node_keys = []
+
+    return {
+        "mode": mode,
+        "node_keys": [str(key) for key in node_keys if key is not None]
+    }
+
+def selection_to_json(selection):
+    return json.dumps(normalize_selection(selection), ensure_ascii=False)
+
+def selection_from_json(selection_json):
+    if not selection_json:
+        return dict(DEFAULT_SELECTION)
+    try:
+        return normalize_selection(json.loads(selection_json))
+    except Exception:
+        return dict(DEFAULT_SELECTION)
+
+def source_row_to_dict(row):
+    source = dict(row)
+    source["selection"] = selection_from_json(source.get("selection_json"))
+    return source
+
 def get_all_sources():
     conn = get_db_connection()
     sources = conn.execute('SELECT * FROM sources').fetchall()
     conn.close()
-    return [dict(s) for s in sources]
+    return [source_row_to_dict(s) for s in sources]
 
-def add_source(name, type, content):
+def add_source(name, type, content, selection=None):
     conn = get_db_connection()
     c = conn.cursor()
-    c.execute('INSERT INTO sources (name, type, content) VALUES (?, ?, ?)', (name, type, content))
+    c.execute(
+        'INSERT INTO sources (name, type, content, selection_json) VALUES (?, ?, ?, ?)',
+        (name, type, content, selection_to_json(selection))
+    )
     conn.commit()
     new_id = c.lastrowid
     conn.close()
@@ -58,13 +109,13 @@ def update_source_status(id, enabled):
     conn.commit()
     conn.close()
 
-def update_source(id, name, source_type, content):
+def update_source(id, name, source_type, content, selection=None):
     conn = get_db_connection()
     conn.execute('''
         UPDATE sources 
-        SET name = ?, type = ?, content = ?, updated_at = ? 
+        SET name = ?, type = ?, content = ?, selection_json = ?, updated_at = ?
         WHERE id = ?
-    ''', (name, source_type, content, datetime.now(), id))
+    ''', (name, source_type, content, selection_to_json(selection), datetime.now(), id))
     conn.commit()
     conn.close()
 
@@ -72,7 +123,7 @@ def get_source_by_id(id):
     conn = get_db_connection()
     row = conn.execute('SELECT * FROM sources WHERE id = ?', (id,)).fetchone()
     conn.close()
-    return dict(row) if row else None
+    return source_row_to_dict(row) if row else None
 
 def delete_source(id):
     conn = get_db_connection()

@@ -13,11 +13,74 @@ app = FastAPI(title="Proxy Manager")
 # Initialize DB
 database.init_db()
 
+MAX_SOURCE_LIST_CONTENT_BYTES = 5000
+
+
+def _summarize_source_content(source):
+    item = dict(source)
+    content = item.get("content") or ""
+    item["content_size"] = len(content.encode("utf-8"))
+    item["content_preview"] = content[:120] + ("..." if len(content) > 120 else "")
+    has_sensitive_content = False
+
+    if item.get("type") == "protonvpn":
+        try:
+            import json
+            data = json.loads(content or "{}")
+            if isinstance(data, dict) and data.get("format") == "protonvpn.compact.v1":
+                count = len(data.get("servers") or [])
+                stats = data.get("stats") if isinstance(data.get("stats"), dict) else {}
+                raw_count = stats.get("raw_servers")
+                unique_count = stats.get("unique_endpoints") or count
+                if not raw_count and count:
+                    endpoint_keys = {
+                        (
+                            item.get("server"),
+                            item.get("port"),
+                            item.get("public_key"),
+                        )
+                        for item in data.get("servers", [])
+                        if isinstance(item, dict)
+                    }
+                    unique_count = len(endpoint_keys)
+                    raw_count = count if unique_count != count else None
+                fetched_at = data.get("fetched_at") or ""
+                if raw_count and raw_count != unique_count:
+                    item["content_preview"] = (
+                        f"Proton compact cache · {unique_count} endpoints · "
+                        f"{raw_count} logical nodes"
+                    )
+                else:
+                    item["content_preview"] = f"Proton compact cache · {count} nodes"
+                if fetched_at:
+                    item["content_preview"] += f" · {fetched_at[:19]}"
+                has_sensitive_content = isinstance(data.get("auth"), dict)
+                if has_sensitive_content:
+                    item["content_preview"] += " · saved session"
+            elif isinstance(data, dict) and isinstance(data.get("wireguard_configs"), list):
+                item["content_preview"] = (
+                    f"Proton WireGuard cache · {len(data['wireguard_configs'])} nodes"
+                )
+                has_sensitive_content = isinstance(data.get("auth"), dict)
+                if has_sensitive_content:
+                    item["content_preview"] += " · saved session"
+        except Exception:
+            pass
+
+    if has_sensitive_content or item["content_size"] > MAX_SOURCE_LIST_CONTENT_BYTES:
+        item["content"] = ""
+        item["content_omitted"] = True
+    else:
+        item["content_omitted"] = False
+
+    return item
+
 # Models
 class SourceCreate(BaseModel):
     name: str
     type: str # 'subscription', 'text', 'vless'
     content: str
+    selection: Optional[dict] = None
     
 class SourceUpdate(BaseModel):
     enabled: bool
@@ -26,16 +89,80 @@ class SourceEdit(BaseModel):
     name: str
     type: str
     content: str
+    selection: Optional[dict] = None
 
 class GenerateRequest(BaseModel):
     output_path: Optional[str] = None
     restart_service: bool = False
     service_name: str = "clash-meta"
 
+class ProtonFetchRequest(BaseModel):
+    username: Optional[str] = None
+    password: Optional[str] = None
+    twofa_code: Optional[str] = None
+    name: Optional[str] = "ProtonVPN"
+    existing_content: Optional[str] = None
+    auth_uid: Optional[str] = None
+    auth_token: Optional[str] = None
+    access_token: Optional[str] = None
+    session_id: Optional[str] = None
+    cookie_header: Optional[str] = None
+    app_version: Optional[str] = None
+    api_base_url: Optional[str] = None
+    dedupe_endpoints: Optional[bool] = None
+
 # Routes
 @app.get("/api/sources")
 def get_sources():
-    return database.get_all_sources()
+    return [_summarize_source_content(source) for source in database.get_all_sources()]
+
+@app.post("/api/protonvpn/fetch")
+def fetch_protonvpn(req: ProtonFetchRequest):
+    try:
+        from . import protonvpn_provider
+        content, nodes = protonvpn_provider.fetch_content(
+            req.username,
+            req.password,
+            req.twofa_code,
+            req.name or "ProtonVPN",
+            existing_content=req.existing_content,
+            auth_uid=req.auth_uid,
+            auth_token=req.auth_token,
+            access_token=req.access_token,
+            session_id=req.session_id,
+            cookie_header=req.cookie_header,
+            app_version=req.app_version,
+            api_base_url=req.api_base_url,
+            dedupe_endpoints=req.dedupe_endpoints,
+        )
+        stats = {}
+        try:
+            import json
+            compact = json.loads(content or "{}")
+            if isinstance(compact, dict) and isinstance(compact.get("stats"), dict):
+                stats = compact["stats"]
+        except Exception:
+            stats = {}
+        preview = []
+        for node in nodes:
+            preview.append({
+                "node_key": node["node_key"],
+                "name": node["name"],
+                "type": node["type"],
+                "server": node["server"],
+                "port": node["port"],
+                "metadata": node.get("metadata", {}),
+                "selected": True,
+            })
+        return {
+            "status": "success",
+            "content": content,
+            "nodes": preview,
+            "count": len(preview),
+            "stats": stats,
+        }
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 @app.post("/api/sources")
 def add_source(source: SourceCreate):
@@ -63,7 +190,7 @@ def add_source(source: SourceCreate):
         except Exception as e:
             raise HTTPException(status_code=400, detail=f"Failed to parse Xray config: {str(e)}")
 
-    new_id = database.add_source(source.name, source_type, content_to_save)
+    new_id = database.add_source(source.name, source_type, content_to_save, source.selection)
     return {"id": new_id, "status": "added"}
 
 @app.delete("/api/sources/{id}")
@@ -100,8 +227,22 @@ def edit_source(id: int, source: SourceEdit):
         except Exception as e:
             raise HTTPException(status_code=400, detail=f"Failed to parse Xray config: {str(e)}")
     
-    database.update_source(id, source.name, source_type, content_to_save)
+    database.update_source(id, source.name, source_type, content_to_save, source.selection)
     return {"status": "updated"}
+
+@app.post("/api/sources/preview")
+def preview_source(source: SourceCreate):
+    try:
+        from . import source_providers
+        nodes = source_providers.preview_nodes(
+            source.type,
+            source.content,
+            source.selection,
+            source.name,
+        )
+        return {"status": "success", "nodes": nodes, "count": len(nodes)}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 @app.get("/api/sources/{id}")
 def get_source(id: int):
@@ -109,6 +250,23 @@ def get_source(id: int):
     if not source:
         raise HTTPException(status_code=404, detail="Source not found")
     return source
+
+@app.get("/api/sources/{id}/preview")
+def preview_saved_source(id: int):
+    source = database.get_source_by_id(id)
+    if not source:
+        raise HTTPException(status_code=404, detail="Source not found")
+    try:
+        from . import source_providers
+        nodes = source_providers.preview_nodes(
+            source["type"],
+            source["content"],
+            source.get("selection"),
+            source.get("name", ""),
+        )
+        return {"status": "success", "nodes": nodes, "count": len(nodes)}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 @app.get("/api/mappings")
 def get_mappings():

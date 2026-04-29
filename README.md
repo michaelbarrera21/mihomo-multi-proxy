@@ -18,6 +18,11 @@ Mihomo Multi Proxy 是一个专注于**决策能力外放**的代理管理服务
 *   **混合端口模式**：所有生成的端口均采用 `mixed` 模式 (同时支持 HTTP 和 SOCKS5)。
 *   **Web 可视化管理**：通过现代化 Web 界面管理所有配置。
 *   **一键生效**：支持自动生成 `config.yaml` 并调用 `systemctl restart mihomo` 重启服务。
+*   **WireGuard / ProtonVPN 导入**：
+    *   支持直接导入 WireGuard `.conf` 或包含 `wireguard_configs` 的 JSON/YAML。
+    *   ProtonVPN source 支持在线拉取服务器列表，拉取后会保存为 WireGuard 配置和可刷新会话，不保存 Proton 密码或 OTP。
+    *   ProtonVPN 默认按真实 WireGuard endpoint 去重，把多个逻辑服务器编号合并为一个可连接节点。
+    *   新增节点预览与选择，只导入你勾选的服务器，生成配置时仍保持每个节点一个稳定端口。
 
 ## 📂 目录结构
 
@@ -164,6 +169,17 @@ sudo systemctl start proxy-manager
 *   **重启服务权限**: 
     *   服务默认以 ROOT 运行以获取写入配置和重启服务的权限。
     *   如果需要重启 Mihomo，请确保 `systemctl restart mihomo` 命令有效。
+
+### ProtonVPN 在线拉取
+
+在新增或编辑 Source 时选择 `Proton`：
+
+*   `Password` 模式：输入 Proton 账号、密码和可选 2FA code，服务会通过 Proton API 拉取可用 WireGuard 节点。
+*   `Session` 模式：如果账号登录流程被验证码、设备确认或 FIDO2 卡住，可以从浏览器请求里复制 Cookie / `x-pm-uid` / `AUTH` token / `AccessToken` 进行一次性拉取。
+
+通过账号密码拉取成功后，source 会保存 Proton 返回的 refresh token；之后编辑该 Proton source 时可以直接点击 Fetch 刷新服务器列表，不需要再次输入 OTP。Proton 密码和 OTP 不会落库，但 refresh token 具备账号会话权限，请把数据库文件按敏感配置保护。
+
+Proton API 可能返回大量不同逻辑编号但相同 `server + port + public-key` 的 WireGuard 入口。服务默认会按这个 endpoint 去重，预览中会显示去重后的 endpoint 数量和合并前的逻辑节点数量；如需保留 Proton 原始逻辑节点，可在 Proton 拉取面板勾选保留重复逻辑节点。
 
 ## 🛠 开发与调试
 

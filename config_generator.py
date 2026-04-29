@@ -2,7 +2,7 @@ import yaml
 import os
 import subprocess
 from . import database
-from . import proxy_parser
+from . import source_providers
 
 CONFIG_OUTPUT_PATH = "../config.yaml" # Default relative path
 START_PORT = 10000
@@ -31,25 +31,14 @@ def generate_config_file(output_path=CONFIG_OUTPUT_PATH):
         
         proxies = []
         try:
-            if stype == 'subscription':
-                proxies = proxy_parser.load_subscription(content)
-                if not proxies:
-                    issues.append({
-                        'source_name': source_name,
-                        'source_type': stype,
-                        'reason': 'empty',
-                        'detail': 'Subscription returned no proxies'
-                    })
-            elif stype in ('text', 'vless', 'yaml', 'http'):
-                # Text/YAML/VLESS/HTTP all treated as text content containing proxies or config
-                proxies = proxy_parser.parse_proxies_from_text(content)
-                if not proxies:
-                    issues.append({
-                        'source_name': source_name,
-                        'source_type': stype,
-                        'reason': 'empty',
-                        'detail': 'Content parsed but no valid proxies found'
-                    })
+            proxies = source_providers.selected_proxies_for_source(source)
+            if not proxies:
+                issues.append({
+                    'source_name': source_name,
+                    'source_type': stype,
+                    'reason': 'empty',
+                    'detail': 'Source returned no selected proxies'
+                })
         except Exception as e:
             issues.append({
                 'source_name': source_name,

@@ -74,6 +74,8 @@
             --pill-yaml-bg: rgba(34,197,94,.1); --pill-yaml-color: #16a34a;
             --pill-xray-bg: rgba(245,158,11,.1); --pill-xray-color: #d97706;
             --pill-http-bg: rgba(244,63,94,.1); --pill-http-color: #e11d48;
+            --pill-wireguard-bg: rgba(20,184,166,.1); --pill-wireguard-color: #0f766e;
+            --pill-protonvpn-bg: rgba(139,92,246,.1); --pill-protonvpn-color: #7c3aed;
             --warning-bg: rgba(245,158,11,.08);
             --warning-border: rgba(245,158,11,.2);
             --warning-color: #b45309;
@@ -125,6 +127,8 @@
             --pill-yaml-bg: rgba(34,197,94,.15); --pill-yaml-color: #4ade80;
             --pill-xray-bg: rgba(245,158,11,.15); --pill-xray-color: #fbbf24;
             --pill-http-bg: rgba(244,63,94,.15); --pill-http-color: #fb7185;
+            --pill-wireguard-bg: rgba(20,184,166,.15); --pill-wireguard-color: #2dd4bf;
+            --pill-protonvpn-bg: rgba(139,92,246,.15); --pill-protonvpn-color: #a78bfa;
             --warning-bg: rgba(245,158,11,.1);
             --warning-border: rgba(245,158,11,.2);
             --warning-color: #fbbf24;
@@ -223,6 +227,8 @@
         .type-text, .type-yaml { background: var(--pill-yaml-bg); color: var(--pill-yaml-color); }
         .type-xray { background: var(--pill-xray-bg); color: var(--pill-xray-color); }
         .type-http { background: var(--pill-http-bg); color: var(--pill-http-color); }
+        .type-wireguard { background: var(--pill-wireguard-bg); color: var(--pill-wireguard-color); }
+        .type-protonvpn { background: var(--pill-protonvpn-bg); color: var(--pill-protonvpn-color); }
 
         /* ===== Toggle ===== */
         .toggle-track {
@@ -334,7 +340,7 @@
                         <i class="ph-bold ph-plus text-xs"></i> Add Source
                     </button>
                     <input type="file" ref="mappingFileInput" class="hidden" @change="uploadMappings" accept=".yaml,.yml">
-                    <input type="file" ref="sourceFileInput" class="hidden" @change="onSourceFileChange" accept=".json,.yaml,.yml,.txt">
+                    <input type="file" ref="sourceFileInput" class="hidden" @change="onSourceFileChange" accept=".conf,.json,.yaml,.yml,.txt">
                 </div>
 
                 <div class="space-y-3">
@@ -355,7 +361,7 @@
                                     <span class="type-pill" :class="'type-' + source.type">{{ source.type }}</span>
                                 </div>
                                 <div class="text-xs t-muted font-mono truncate">
-                                    {{ formatContent(source.content) }}
+                                    {{ formatSourceContent(source) }}
                                 </div>
                             </div>
                             <div class="flex items-center gap-2 flex-shrink-0">
@@ -488,7 +494,7 @@
 
         <!-- ===== Add Source Modal ===== -->
         <div v-if="showAddModal" class="fixed inset-0 modal-backdrop flex items-center justify-center z-50 p-4">
-            <div class="modal-panel rounded-2xl w-full max-w-lg p-6 space-y-5 animate-modal">
+            <div class="modal-panel rounded-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto custom-scrollbar p-6 space-y-5 animate-modal">
                 <div class="flex justify-between items-center">
                     <h3 class="text-lg font-bold t-body">Add Source</h3>
                     <button @click="closeAddModal" class="p-1.5 rounded-lg btn-ghost t-muted">
@@ -539,13 +545,85 @@
 
                     <div>
                         <label class="text-[11px] font-medium t-muted uppercase tracking-wider block mb-1.5">Type</label>
-                        <div class="grid grid-cols-5 gap-1.5">
-                            <button v-for="t in [{k:'subscription',l:'Sub'},{k:'vless',l:'VLESS/URI'},{k:'text',l:'YAML'},{k:'xray',l:'Xray'},{k:'http',l:'HTTP/S'}]"
+                        <div class="grid grid-cols-4 sm:grid-cols-7 gap-1.5">
+                            <button v-for="t in SOURCE_TYPES"
                                 :key="t.k" @click="newSource.type = t.k"
                                 :class="newSource.type === t.k
                                     ? 'bg-primary-500/20 text-primary-400 border-primary-500/30'
                                     : 'surface-subtle t-muted hover:t-secondary'"
                                 class="px-2 py-2 rounded-lg text-[11px] font-semibold transition border">{{ t.l }}</button>
+                        </div>
+                    </div>
+
+                    <div v-if="newSource.type === 'protonvpn'" class="space-y-3 rounded-xl surface-subtle p-3">
+                        <div class="grid grid-cols-2 gap-1.5">
+                            <button @click="newProtonCredentials.auth_mode = 'password'"
+                                :class="newProtonCredentials.auth_mode === 'password'
+                                    ? 'bg-primary-500/20 text-primary-400 border-primary-500/30'
+                                    : 'surface-subtle t-muted hover:t-secondary'"
+                                class="px-2 py-2 rounded-lg text-[11px] font-semibold transition border">Password</button>
+                            <button @click="newProtonCredentials.auth_mode = 'session'"
+                                :class="newProtonCredentials.auth_mode === 'session'
+                                    ? 'bg-primary-500/20 text-primary-400 border-primary-500/30'
+                                    : 'surface-subtle t-muted hover:t-secondary'"
+                                class="px-2 py-2 rounded-lg text-[11px] font-semibold transition border">Session</button>
+                        </div>
+                        <div v-if="newProtonCredentials.auth_mode === 'password'" class="space-y-2">
+                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                <div>
+                                    <label class="text-[10px] font-medium t-muted uppercase tracking-wider block mb-1.5">Username</label>
+                                    <input v-model="newProtonCredentials.username" type="text"
+                                        class="input-field w-full rounded-lg px-3 py-2 text-xs t-body"
+                                        placeholder="Proton account">
+                                </div>
+                                <div>
+                                    <label class="text-[10px] font-medium t-muted uppercase tracking-wider block mb-1.5">Password</label>
+                                    <input v-model="newProtonCredentials.password" type="password"
+                                        class="input-field w-full rounded-lg px-3 py-2 text-xs t-body"
+                                        placeholder="Not saved">
+                                </div>
+                            </div>
+                            <input v-model="newProtonCredentials.twofa_code" type="text"
+                                class="input-field w-full rounded-lg px-3 py-2 text-xs t-body"
+                                placeholder="2FA code if required">
+                        </div>
+                        <div v-else class="space-y-2">
+                            <textarea v-model="newProtonCredentials.cookie_header" rows="2"
+                                class="input-field w-full rounded-lg px-3 py-2 text-xs t-body font-mono resize-none"
+                                placeholder="Cookie header"></textarea>
+                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                <input v-model="newProtonCredentials.auth_uid" type="text"
+                                    class="input-field w-full rounded-lg px-3 py-2 text-xs t-body"
+                                    placeholder="x-pm-uid">
+                                <input v-model="newProtonCredentials.auth_token" type="password"
+                                    class="input-field w-full rounded-lg px-3 py-2 text-xs t-body"
+                                    placeholder="AUTH token">
+                                <input v-model="newProtonCredentials.access_token" type="password"
+                                    class="input-field w-full rounded-lg px-3 py-2 text-xs t-body"
+                                    placeholder="AccessToken">
+                                <input v-model="newProtonCredentials.session_id" type="password"
+                                    class="input-field w-full rounded-lg px-3 py-2 text-xs t-body"
+                                    placeholder="Session-Id">
+                            </div>
+                            <input v-model="newProtonCredentials.app_version" type="text"
+                                class="input-field w-full rounded-lg px-3 py-2 text-xs t-body"
+                                placeholder="x-pm-appversion">
+                        </div>
+                        <label class="flex items-center gap-2 text-[11px] t-muted">
+                            <input type="checkbox" v-model="newProtonCredentials.keep_duplicates"
+                                class="w-3.5 h-3.5 rounded border-slate-300 dark:border-slate-600 text-primary-500 focus:ring-primary-500/30 bg-slate-100 dark:bg-slate-700/80">
+                            <span>Keep duplicated Proton logical nodes</span>
+                        </label>
+                        <button @click="fetchNewProton"
+                            :disabled="isFetchingNewProton || !canFetchProton(newProtonCredentials, newSource)"
+                            class="btn-primary text-white text-xs font-medium px-4 py-2 rounded-lg flex items-center justify-center gap-1.5 disabled:opacity-50 w-full">
+                            <i :class="isFetchingNewProton ? 'ph ph-circle-notch animate-spin' : 'ph ph-cloud-arrow-down'" class="text-sm"></i>
+                            Fetch
+                        </button>
+                        <div v-if="newProtonError"
+                            class="flex items-start gap-2 text-xs text-rose-400 bg-rose-500/10 border border-rose-500/20 rounded-lg px-3 py-2">
+                            <i class="ph ph-warning-circle flex-shrink-0 mt-0.5"></i>
+                            <span>{{ newProtonError }}</span>
                         </div>
                     </div>
 
@@ -556,11 +634,68 @@
                                 <i class="ph ph-folder-open text-xs"></i> Load File
                             </button>
                         </div>
-                        <textarea v-model="newSource.content" rows="4"
+                        <textarea v-if="newSource.type !== 'protonvpn'" v-model="newSource.content" rows="4"
                             class="input-field w-full rounded-xl px-4 py-2.5 t-body font-mono text-xs leading-relaxed resize-none"
                             :placeholder="newSource.type === 'http' ? 'http://user:pass@host:port#name' : 'Paste URL or content here...'"></textarea>
+                        <div v-else class="surface-subtle rounded-xl px-3 py-2.5 text-xs t-secondary font-mono truncate">
+                            {{ protonContentSummary(newSource.content) }}
+                        </div>
                         <div v-if="newSource.type === 'http'" class="mt-2 text-[11px] t-muted leading-relaxed">
                             格式: <code class="code-inline px-1.5 py-0.5 rounded">http://[user:pass@]host:port#name</code>
+                        </div>
+                        <div v-else-if="newSource.type === 'wireguard'" class="mt-2 text-[11px] t-muted leading-relaxed">
+                            支持 WireGuard <code class="code-inline px-1.5 py-0.5 rounded">.conf</code> 或包含 <code class="code-inline px-1.5 py-0.5 rounded">wireguard_configs</code> 的 YAML/JSON
+                        </div>
+                        <div v-else-if="newSource.type === 'protonvpn'" class="mt-2 text-[11px] t-muted leading-relaxed">
+                            Compact cache
+                        </div>
+                    </div>
+
+                    <div class="space-y-2">
+                        <div class="flex items-center justify-between">
+                            <button @click="previewNewSource" :disabled="isPreviewingNew || !newSource.content"
+                                class="text-[11px] font-medium text-primary-400 hover:text-primary-600 dark:hover:text-white flex items-center gap-1.5 transition disabled:opacity-50">
+                                <i :class="isPreviewingNew ? 'ph ph-circle-notch animate-spin' : 'ph ph-list-checks'" class="text-xs"></i>
+                                Preview &amp; Select
+                            </button>
+                            <span v-if="previewNewNodes.length" class="text-[11px] t-muted">{{ selectionSummary(previewNewNodes) }}</span>
+                        </div>
+                        <div v-if="newPreviewError"
+                            class="flex items-start gap-2 text-xs text-rose-400 bg-rose-500/10 border border-rose-500/20 rounded-xl px-3 py-2.5">
+                            <i class="ph ph-warning-circle flex-shrink-0 mt-0.5"></i>
+                            <span>{{ newPreviewError }}</span>
+                        </div>
+                        <div v-if="previewNewNodes.length" class="max-h-48 overflow-y-auto custom-scrollbar rounded-xl surface-subtle p-2 space-y-0.5">
+                            <div class="flex flex-col sm:flex-row sm:items-center gap-2 px-1 pb-1 text-[11px] t-muted">
+                                <input v-model="newPreviewFilter" type="text"
+                                    class="input-field flex-1 rounded-lg px-2 py-1.5 text-[11px] t-body"
+                                    placeholder="Filter country, city, server">
+                                <div class="flex items-center justify-between gap-2">
+                                    <span>{{ selectedCount(previewNewNodes) }} selected · {{ newPreviewRangeText }}</span>
+                                    <div class="flex gap-2">
+                                        <button @click="selectFilteredNewPreviewNodes(true)" class="hover:text-primary-400">All</button>
+                                        <button @click="selectFilteredNewPreviewNodes(false)" class="hover:text-primary-400">None</button>
+                                    </div>
+                                </div>
+                            </div>
+                            <label v-for="node in newPreviewVisibleNodes" :key="node.node_key"
+                                class="flex items-center gap-2 rounded-lg px-2 py-1.5 row-hover transition cursor-pointer">
+                                <input type="checkbox" :checked="node.selected" @change="toggleNewPreviewNode(node)"
+                                    class="w-3.5 h-3.5 rounded border-slate-300 dark:border-slate-600 text-primary-500 focus:ring-primary-500/30 bg-slate-100 dark:bg-slate-700/80">
+                                <span class="flex-1 min-w-0">
+                                    <span class="block text-xs t-secondary truncate">{{ node.name }}</span>
+                                    <span class="block text-[10px] t-muted truncate">{{ node.type }} · {{ node.server }}<template v-if="node.port">:{{ node.port }}</template><template v-if="node.metadata && node.metadata.logical_count > 1"> · {{ node.metadata.logical_count }} logical</template></span>
+                                </span>
+                            </label>
+                            <div v-if="newPreviewTotalPages > 1" class="flex items-center justify-between px-1 pt-1 text-[11px] t-muted">
+                                <button @click="newPreviewPage = Math.max(1, newPreviewPage - 1)"
+                                    :disabled="newPreviewPage <= 1"
+                                    class="hover:text-primary-400 disabled:opacity-40">Prev</button>
+                                <span>{{ newPreviewPage }}/{{ newPreviewTotalPages }}</span>
+                                <button @click="newPreviewPage = Math.min(newPreviewTotalPages, newPreviewPage + 1)"
+                                    :disabled="newPreviewPage >= newPreviewTotalPages"
+                                    class="hover:text-primary-400 disabled:opacity-40">Next</button>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -602,7 +737,7 @@
 
         <!-- ===== Edit Source Modal ===== -->
         <div v-if="showEditSourceModal" class="fixed inset-0 modal-backdrop flex items-center justify-center z-50 p-4">
-            <div class="modal-panel rounded-2xl w-full max-w-lg p-6 space-y-5 animate-modal">
+            <div class="modal-panel rounded-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto custom-scrollbar p-6 space-y-5 animate-modal">
                 <div class="flex justify-between items-center">
                     <h3 class="text-lg font-bold t-body">编辑 Source</h3>
                     <button @click="showEditSourceModal = false" class="p-1.5 rounded-lg btn-ghost t-muted">
@@ -653,13 +788,85 @@
 
                     <div>
                         <label class="text-[11px] font-medium t-muted uppercase tracking-wider block mb-1.5">Type</label>
-                        <div class="grid grid-cols-5 gap-1.5">
-                            <button v-for="t in [{k:'subscription',l:'Sub'},{k:'vless',l:'VLESS/URI'},{k:'text',l:'YAML',alt:'yaml'},{k:'xray',l:'Xray'},{k:'http',l:'HTTP/S'}]"
+                        <div class="grid grid-cols-4 sm:grid-cols-7 gap-1.5">
+                            <button v-for="t in SOURCE_TYPES"
                                 :key="t.k" @click="editSource.type = t.k"
-                                :class="(editSource.type === t.k || editSource.type === t.alt)
+                                :class="(editSource.type === t.k || (t.k === 'text' && editSource.type === 'yaml'))
                                     ? 'bg-primary-500/20 text-primary-400 border-primary-500/30'
                                     : 'surface-subtle t-muted hover:t-secondary'"
                                 class="px-2 py-2 rounded-lg text-[11px] font-semibold transition border">{{ t.l }}</button>
+                        </div>
+                    </div>
+
+                    <div v-if="editSource.type === 'protonvpn'" class="space-y-3 rounded-xl surface-subtle p-3">
+                        <div class="grid grid-cols-2 gap-1.5">
+                            <button @click="editProtonCredentials.auth_mode = 'password'"
+                                :class="editProtonCredentials.auth_mode === 'password'
+                                    ? 'bg-primary-500/20 text-primary-400 border-primary-500/30'
+                                    : 'surface-subtle t-muted hover:t-secondary'"
+                                class="px-2 py-2 rounded-lg text-[11px] font-semibold transition border">Password</button>
+                            <button @click="editProtonCredentials.auth_mode = 'session'"
+                                :class="editProtonCredentials.auth_mode === 'session'
+                                    ? 'bg-primary-500/20 text-primary-400 border-primary-500/30'
+                                    : 'surface-subtle t-muted hover:t-secondary'"
+                                class="px-2 py-2 rounded-lg text-[11px] font-semibold transition border">Session</button>
+                        </div>
+                        <div v-if="editProtonCredentials.auth_mode === 'password'" class="space-y-2">
+                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                <div>
+                                    <label class="text-[10px] font-medium t-muted uppercase tracking-wider block mb-1.5">Username</label>
+                                    <input v-model="editProtonCredentials.username" type="text"
+                                        class="input-field w-full rounded-lg px-3 py-2 text-xs t-body"
+                                        placeholder="Proton account">
+                                </div>
+                                <div>
+                                    <label class="text-[10px] font-medium t-muted uppercase tracking-wider block mb-1.5">Password</label>
+                                    <input v-model="editProtonCredentials.password" type="password"
+                                        class="input-field w-full rounded-lg px-3 py-2 text-xs t-body"
+                                        placeholder="Not saved">
+                                </div>
+                            </div>
+                            <input v-model="editProtonCredentials.twofa_code" type="text"
+                                class="input-field w-full rounded-lg px-3 py-2 text-xs t-body"
+                                placeholder="2FA code if required">
+                        </div>
+                        <div v-else class="space-y-2">
+                            <textarea v-model="editProtonCredentials.cookie_header" rows="2"
+                                class="input-field w-full rounded-lg px-3 py-2 text-xs t-body font-mono resize-none"
+                                placeholder="Cookie header"></textarea>
+                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                <input v-model="editProtonCredentials.auth_uid" type="text"
+                                    class="input-field w-full rounded-lg px-3 py-2 text-xs t-body"
+                                    placeholder="x-pm-uid">
+                                <input v-model="editProtonCredentials.auth_token" type="password"
+                                    class="input-field w-full rounded-lg px-3 py-2 text-xs t-body"
+                                    placeholder="AUTH token">
+                                <input v-model="editProtonCredentials.access_token" type="password"
+                                    class="input-field w-full rounded-lg px-3 py-2 text-xs t-body"
+                                    placeholder="AccessToken">
+                                <input v-model="editProtonCredentials.session_id" type="password"
+                                    class="input-field w-full rounded-lg px-3 py-2 text-xs t-body"
+                                    placeholder="Session-Id">
+                            </div>
+                            <input v-model="editProtonCredentials.app_version" type="text"
+                                class="input-field w-full rounded-lg px-3 py-2 text-xs t-body"
+                                placeholder="x-pm-appversion">
+                        </div>
+                        <label class="flex items-center gap-2 text-[11px] t-muted">
+                            <input type="checkbox" v-model="editProtonCredentials.keep_duplicates"
+                                class="w-3.5 h-3.5 rounded border-slate-300 dark:border-slate-600 text-primary-500 focus:ring-primary-500/30 bg-slate-100 dark:bg-slate-700/80">
+                            <span>Keep duplicated Proton logical nodes</span>
+                        </label>
+                        <button @click="fetchEditProton"
+                            :disabled="isFetchingEditProton || !canFetchProton(editProtonCredentials, editSource)"
+                            class="btn-primary text-white text-xs font-medium px-4 py-2 rounded-lg flex items-center justify-center gap-1.5 disabled:opacity-50 w-full">
+                            <i :class="isFetchingEditProton ? 'ph ph-circle-notch animate-spin' : 'ph ph-cloud-arrow-down'" class="text-sm"></i>
+                            Fetch
+                        </button>
+                        <div v-if="editProtonError"
+                            class="flex items-start gap-2 text-xs text-rose-400 bg-rose-500/10 border border-rose-500/20 rounded-lg px-3 py-2">
+                            <i class="ph ph-warning-circle flex-shrink-0 mt-0.5"></i>
+                            <span>{{ editProtonError }}</span>
                         </div>
                     </div>
 
@@ -670,11 +877,68 @@
                                 <i class="ph ph-folder-open text-xs"></i> Load File
                             </button>
                         </div>
-                        <textarea v-model="editSource.content" rows="4"
+                        <textarea v-if="editSource.type !== 'protonvpn'" v-model="editSource.content" rows="4"
                             class="input-field w-full rounded-xl px-4 py-2.5 t-body font-mono text-xs leading-relaxed resize-none"
                             :placeholder="editSource.type === 'http' ? 'http://user:pass@host:port#name' : 'Paste URL or content here...'"></textarea>
+                        <div v-else class="surface-subtle rounded-xl px-3 py-2.5 text-xs t-secondary font-mono truncate">
+                            {{ protonContentSummary(editSource.content) }}
+                        </div>
                         <div v-if="editSource.type === 'http'" class="mt-2 text-[11px] t-muted leading-relaxed">
                             格式: <code class="code-inline px-1.5 py-0.5 rounded">http://[user:pass@]host:port#name</code>
+                        </div>
+                        <div v-else-if="editSource.type === 'wireguard'" class="mt-2 text-[11px] t-muted leading-relaxed">
+                            支持 WireGuard <code class="code-inline px-1.5 py-0.5 rounded">.conf</code> 或包含 <code class="code-inline px-1.5 py-0.5 rounded">wireguard_configs</code> 的 YAML/JSON
+                        </div>
+                        <div v-else-if="editSource.type === 'protonvpn'" class="mt-2 text-[11px] t-muted leading-relaxed">
+                            Compact cache
+                        </div>
+                    </div>
+
+                    <div class="space-y-2">
+                        <div class="flex items-center justify-between">
+                            <button @click="previewEditSource" :disabled="isPreviewingEdit || !editSource.content"
+                                class="text-[11px] font-medium text-primary-400 hover:text-primary-600 dark:hover:text-white flex items-center gap-1.5 transition disabled:opacity-50">
+                                <i :class="isPreviewingEdit ? 'ph ph-circle-notch animate-spin' : 'ph ph-list-checks'" class="text-xs"></i>
+                                Preview &amp; Select
+                            </button>
+                            <span v-if="previewEditNodes.length" class="text-[11px] t-muted">{{ selectionSummary(previewEditNodes) }}</span>
+                        </div>
+                        <div v-if="editPreviewError"
+                            class="flex items-start gap-2 text-xs text-rose-400 bg-rose-500/10 border border-rose-500/20 rounded-xl px-3 py-2.5">
+                            <i class="ph ph-warning-circle flex-shrink-0 mt-0.5"></i>
+                            <span>{{ editPreviewError }}</span>
+                        </div>
+                        <div v-if="previewEditNodes.length" class="max-h-48 overflow-y-auto custom-scrollbar rounded-xl surface-subtle p-2 space-y-0.5">
+                            <div class="flex flex-col sm:flex-row sm:items-center gap-2 px-1 pb-1 text-[11px] t-muted">
+                                <input v-model="editPreviewFilter" type="text"
+                                    class="input-field flex-1 rounded-lg px-2 py-1.5 text-[11px] t-body"
+                                    placeholder="Filter country, city, server">
+                                <div class="flex items-center justify-between gap-2">
+                                    <span>{{ selectedCount(previewEditNodes) }} selected · {{ editPreviewRangeText }}</span>
+                                    <div class="flex gap-2">
+                                        <button @click="selectFilteredEditPreviewNodes(true)" class="hover:text-primary-400">All</button>
+                                        <button @click="selectFilteredEditPreviewNodes(false)" class="hover:text-primary-400">None</button>
+                                    </div>
+                                </div>
+                            </div>
+                            <label v-for="node in editPreviewVisibleNodes" :key="node.node_key"
+                                class="flex items-center gap-2 rounded-lg px-2 py-1.5 row-hover transition cursor-pointer">
+                                <input type="checkbox" :checked="node.selected" @change="toggleEditPreviewNode(node)"
+                                    class="w-3.5 h-3.5 rounded border-slate-300 dark:border-slate-600 text-primary-500 focus:ring-primary-500/30 bg-slate-100 dark:bg-slate-700/80">
+                                <span class="flex-1 min-w-0">
+                                    <span class="block text-xs t-secondary truncate">{{ node.name }}</span>
+                                    <span class="block text-[10px] t-muted truncate">{{ node.type }} · {{ node.server }}<template v-if="node.port">:{{ node.port }}</template><template v-if="node.metadata && node.metadata.logical_count > 1"> · {{ node.metadata.logical_count }} logical</template></span>
+                                </span>
+                            </label>
+                            <div v-if="editPreviewTotalPages > 1" class="flex items-center justify-between px-1 pt-1 text-[11px] t-muted">
+                                <button @click="editPreviewPage = Math.max(1, editPreviewPage - 1)"
+                                    :disabled="editPreviewPage <= 1"
+                                    class="hover:text-primary-400 disabled:opacity-40">Prev</button>
+                                <span>{{ editPreviewPage }}/{{ editPreviewTotalPages }}</span>
+                                <button @click="editPreviewPage = Math.min(editPreviewTotalPages, editPreviewPage + 1)"
+                                    :disabled="editPreviewPage >= editPreviewTotalPages"
+                                    class="hover:text-primary-400 disabled:opacity-40">Next</button>
+                            </div>
                         </div>
                     </div>
                 </div>
