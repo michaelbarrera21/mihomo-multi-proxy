@@ -3,6 +3,27 @@ set -e
 
 echo "=== Proxy Manager 部署脚本 ==="
 
+install_requirements() {
+    cd /opt/proxy-manager
+
+    if [ ! -x ./venv/bin/python ]; then
+        echo "   虚拟环境不存在或已损坏，正在重建..."
+        rm -rf ./venv
+        python3 -m venv venv
+    fi
+
+    if ! ./venv/bin/python -m pip --version >/dev/null 2>&1; then
+        echo "   pip 不可用，正在初始化..."
+        ./venv/bin/python -m ensurepip --upgrade
+    fi
+
+    if [ "$1" == "--upgrade-pip" ]; then
+        ./venv/bin/python -m pip install --upgrade pip
+    fi
+
+    ./venv/bin/python -m pip install -r mihomo-multi-proxy/requirements.txt
+}
+
 if [ "$1" == "upgrade" ]; then
     echo "=== 升级模式 ==="
     echo "[1/4] 停止服务..."
@@ -24,8 +45,7 @@ if [ "$1" == "upgrade" ]; then
     fi
     
     echo "[4/4] 更新依赖并重启..."
-    cd /opt/proxy-manager
-    ./venv/bin/pip install -r mihomo-multi-proxy/requirements.txt
+    install_requirements
     
     systemctl start proxy-manager
     systemctl status proxy-manager --no-pager
@@ -45,8 +65,7 @@ cp -r ../mihomo-multi-proxy /opt/proxy-manager/
 echo "[3/5] 创建虚拟环境并安装依赖..."
 cd /opt/proxy-manager
 python3 -m venv venv
-./venv/bin/pip install --upgrade pip
-./venv/bin/pip install -r mihomo-multi-proxy/requirements.txt
+install_requirements --upgrade-pip
 
 # 4. 安装 systemd 服务
 echo "[4/5] 配置 systemd 服务..."
