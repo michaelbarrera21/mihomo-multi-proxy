@@ -181,6 +181,7 @@ sudo systemctl restart proxy-manager
 ```
 
 *   **配置输出路径**: 在网页控制台右侧，填写你的 mihomo 配置文件路径，例如 `/etc/mihomo/config.yaml`。
+*   **Mihomo Web 入口**: 点击 `Open Mihomo Web` 会读取当前配置输出路径中的 `external-controller` 和 `external-ui`，自动打开 Mihomo 面板地址。
 *   **重启服务权限**: 
     *   服务默认以 ROOT 运行以获取写入配置和重启服务的权限。
     *   如果需要重启 Mihomo，请确保 `systemctl restart mihomo` 命令有效。

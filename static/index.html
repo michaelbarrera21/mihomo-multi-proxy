@@ -433,6 +433,12 @@
                                 Generate &amp; Apply
                             </template>
                         </button>
+
+                        <button @click="openMihomoWeb" :disabled="isOpeningMihomoWeb"
+                            class="surface-subtle surface-subtle-hover w-full t-secondary font-semibold py-3 rounded-xl flex justify-center items-center gap-2 text-sm transition disabled:opacity-50">
+                            <i :class="isOpeningMihomoWeb ? 'ph ph-circle-notch animate-spin' : 'ph ph-monitor-play'" class="text-lg"></i>
+                            Open Mihomo Web
+                        </button>
                     </div>
 
                     <div v-if="message"

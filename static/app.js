@@ -486,13 +486,15 @@ createApp({
         const newProtonError = ref('');
         let _addSyncLock = false;
 
-        const restartService = ref(false);
+        const restartService = ref(localStorage.getItem('restartService') === 'true');
         const serviceName = ref(localStorage.getItem('serviceName') || 'clash-meta');
         const outputPath = ref(localStorage.getItem('outputPath') || '/etc/mihomo/config.yaml');
         const isGenerating = ref(false);
+        const isOpeningMihomoWeb = ref(false);
         const message = ref('');
         const success = ref(false);
 
+        watch(restartService, (v) => localStorage.setItem('restartService', v ? 'true' : 'false'));
         watch(serviceName, (v) => localStorage.setItem('serviceName', v));
         watch(outputPath, (v) => localStorage.setItem('outputPath', v));
 
@@ -839,6 +841,33 @@ createApp({
             }
         };
 
+        const openMihomoWeb = async () => {
+            isOpeningMihomoWeb.value = true;
+            message.value = '';
+            const popup = window.open('about:blank', '_blank');
+            if (popup) popup.opener = null;
+            try {
+                const res = await fetch(`/api/mihomo/webui?output_path=${encodeURIComponent(outputPath.value)}`);
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.detail || 'Failed to read Mihomo config');
+                if (popup) {
+                    popup.location.href = data.url;
+                } else {
+                    window.location.href = data.url;
+                }
+                success.value = true;
+                message.value = data.secret
+                    ? `Mihomo Web: ${data.url}\nAPI Secret: ${data.secret}`
+                    : `Mihomo Web: ${data.url}`;
+            } catch (e) {
+                if (popup) popup.close();
+                success.value = false;
+                message.value = 'Open Mihomo Web failed: ' + (e.message || e);
+            } finally {
+                isOpeningMihomoWeb.value = false;
+            }
+        };
+
         const uploadMappings = async (event) => {
             const file = event.target.files[0];
             if (!file) return;
@@ -1095,6 +1124,7 @@ createApp({
             restartService,
             outputPath,
             isGenerating,
+            isOpeningMihomoWeb,
             message,
             success,
             showEditModal,
@@ -1130,6 +1160,7 @@ createApp({
             openEditSourceModal,
             saveSourceEdit,
             generateConfig,
+            openMihomoWeb,
             formatContent,
             formatSourceContent,
             protonContentSummary,

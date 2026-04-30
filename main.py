@@ -5,6 +5,8 @@ from pydantic import BaseModel
 from typing import Optional, List
 import os
 from urllib.parse import quote
+from urllib.parse import urlsplit
+import yaml
 from . import database
 from . import config_generator
 from . import auth
@@ -133,6 +135,77 @@ def _safe_next_url(value: Optional[str]) -> str:
 
 def _is_public_path(path: str) -> bool:
     return path == "/login" or path.startswith("/api/auth/")
+
+
+def _browser_host(request: Request) -> str:
+    forwarded_host = request.headers.get("x-forwarded-host")
+    host_header = forwarded_host or request.headers.get("host") or ""
+    host = host_header.split(",", 1)[0].strip()
+    if host:
+        return host.rsplit(":", 1)[0] if host.count(":") == 1 else host
+    return request.url.hostname or "127.0.0.1"
+
+
+def _parse_controller_address(controller: str, request: Request):
+    value = (controller or "").strip()
+    if not value:
+        raise ValueError("external-controller is empty")
+
+    if "://" in value:
+        parsed = urlsplit(value)
+        scheme = parsed.scheme or "http"
+        host = parsed.hostname or ""
+        port = parsed.port
+    else:
+        parsed = urlsplit("//" + value)
+        scheme = "http"
+        host = parsed.hostname or ""
+        port = parsed.port
+
+    if host in {"", "0.0.0.0", "::", "[::]", "::0"}:
+        host = _browser_host(request)
+
+    if not port:
+        port = 80 if scheme == "http" else 443
+
+    return scheme, host, port
+
+
+def _mihomo_web_url(config_path: str, request: Request) -> dict:
+    if not os.path.exists(config_path):
+        raise HTTPException(status_code=404, detail=f"Config file not found: {config_path}")
+
+    try:
+        with open(config_path, "r", encoding="utf-8") as f:
+            config = yaml.safe_load(f) or {}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Failed to read Mihomo config: {e}")
+
+    if not isinstance(config, dict):
+        raise HTTPException(status_code=400, detail="Mihomo config must be a YAML object")
+
+    external_ui = config.get("external-ui") or config.get("external-ui-name")
+    if not external_ui:
+        raise HTTPException(status_code=404, detail="Mihomo config has no external-ui configured")
+
+    controller = config.get("external-controller") or ""
+    try:
+        scheme, host, port = _parse_controller_address(str(controller), request)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Invalid external-controller: {e}")
+
+    host_part = f"[{host}]" if ":" in host and not host.startswith("[") else host
+    default_port = (scheme == "http" and port == 80) or (scheme == "https" and port == 443)
+    netloc = host_part if default_port else f"{host_part}:{port}"
+    ui_path = str(config.get("external-ui-name") or "ui").strip("/") or "ui"
+
+    return {
+        "status": "success",
+        "url": f"{scheme}://{netloc}/{ui_path}",
+        "controller": str(controller),
+        "external_ui": str(external_ui),
+        "secret": config.get("secret") or "",
+    }
 
 
 @app.on_event("startup")
@@ -356,6 +429,11 @@ def get_mappings():
 @app.get("/api/mappings/duplicates")
 def get_duplicates():
     return database.get_duplicate_ports()
+
+@app.get("/api/mihomo/webui")
+def get_mihomo_webui(request: Request, output_path: Optional[str] = None):
+    path = output_path or config_generator.CONFIG_OUTPUT_PATH
+    return _mihomo_web_url(path, request)
 
 @app.delete("/api/mappings/{proxy_name:path}")
 def delete_mapping(proxy_name: str):
